@@ -2,11 +2,10 @@
 title: About this Blog
 ---
 
-> I must have thought that there was nothing more
->
+> I must have thought that there was nothing more<br>
 > Absurd than that love is just a four letter word
 >
-> — Bob Dylan
+> [— Bob Dylan](https://www.bobdylan.com/songs/love-is-just-a-four-letter-word/)
 
 **Love is just a four letter word.** No doubt about it.
 At least in the  English language this is perfectly true, which is easy to prove in a short Haskell REPL session:
