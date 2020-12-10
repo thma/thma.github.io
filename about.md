@@ -35,7 +35,7 @@ It's not wrong in the orthographical sense, but it does not help to get any deep
 
 Since it is apparently impossible to say anything meaningful about λ in such short statements, there is probably no way around approaching this phenomenon in somewhat longer texts. Hence this Blog!
 
-As my old professor said:
+As my late professor said:
 
 > Whereof one cannot speak, thereof one must write!
 >
