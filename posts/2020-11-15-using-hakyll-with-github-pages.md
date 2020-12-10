@@ -77,6 +77,7 @@ main = do
 ```
 
 ### Deployment
+
 So everything’s all setup, and we’re ready to deploy.
 
 We need to be able to run the executable that generates the website, so we need to compile it first. If you are using stack, this can be done using:
@@ -111,13 +112,15 @@ That's all.
 
 Now your Hakyll site should be visible under your GitHub Pages URL!
 
-The source code for my site lies under [LambdaBlog](https://github.com/thma/LambdaBlog) GitHub project.
-I've adopted the composeconference css from the great [Katy Chuangs Hakyll CSS Garden](http://katychuang.com/hakyll-cssgarden/gallery/).
+## View the source
+
+The source code for this blog post lies under my [thma.github.io](https://github.com/thma/thma.github.io) GitHub project.
+I've adopted the composeconference css from [Katy Chuangs great Hakyll CSS Garden](http://katychuang.com/hakyll-cssgarden/gallery/) 
+and tweaked it a little bit to look more like GitHub markdown style and to provide some basic responsive design.
 
 ## Update Nov. 24th 2020
 
 The Hakyll project has just accepted my pull request for the Using Hakyll with GitHub Pages
-tutorial.
+tutorial, which updates the text according to the findings presented in this post.
 
-The amended version will thus be online shortly, 
-rendering this blog entry kind of obsolete...
+The amended version will thus be online shortly, rendering this blog entry kind of obsolete...

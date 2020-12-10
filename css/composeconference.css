@@ -14,24 +14,22 @@ body {
     word-wrap: break-word;
 }
 
-.row {
-    display: table;
-    table-layout: fixed;
-    width: 100%;
-}
-
-.column {
-    display: table-cell;
-}
-
 header {
     width: 100%;
     overflow: hidden;
     position: fixed;
     top: 0;
-    padding: 10px 1em 5px 1em;
+    padding: 1em 1em 1em 1em;
     background: #f6f8fa;
     z-index: 1000;
+    float: center;
+}
+
+.heading {    
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 52em;
+    left: auto;
 }
 
 div.logo a {
@@ -45,13 +43,14 @@ div.logo a {
 
 header nav {
     text-align: left;
+    padding-right: 2em;
 }
 
 header nav a {
     color: #BBBBBB;
     font-size: 16px;    
     text-decoration: none;
-    text-transform: capitalize;
+    font-weight: 300;
 }
 
 header nav a:hover{
@@ -59,7 +58,7 @@ header nav a:hover{
 }
 
 main {
-    margin-top: 9em;
+    margin-top: 10em;
     margin-left: auto;
     margin-right: auto;
     margin-bottom: 10em;

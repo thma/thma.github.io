@@ -74,9 +74,10 @@
 <div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">git</span> push origin master:master</span></code></pre></div>
 <p>That’s all.</p>
 <p>Now your Hakyll site should be visible under your GitHub Pages URL!</p>
-<p>The source code for my site lies under <a href="https://github.com/thma/LambdaBlog">LambdaBlog</a> GitHub project. I’ve adopted the composeconference css from the great <a href="http://katychuang.com/hakyll-cssgarden/gallery/">Katy Chuangs Hakyll CSS Garden</a>.</p>
+<h2 id="view-the-source">View the source</h2>
+<p>The source code for this blog post lies under my <a href="https://github.com/thma/thma.github.io">thma.github.io</a> GitHub project. I’ve adopted the composeconference css from <a href="http://katychuang.com/hakyll-cssgarden/gallery/">Katy Chuangs great Hakyll CSS Garden</a> and tweaked it a little bit to look more like GitHub markdown style and to provide some basic responsive design.</p>
 <h2 id="update-nov.-24th-2020">Update Nov. 24th 2020</h2>
-<p>The Hakyll project has just accepted my pull request for the Using Hakyll with GitHub Pages tutorial.</p>
+<p>The Hakyll project has just accepted my pull request for the Using Hakyll with GitHub Pages tutorial, which updates the text according to the findings presented in this post.</p>
 <p>The amended version will thus be online shortly, rendering this blog entry kind of obsolete…</p>
 ]]></description>
     <pubDate>Sun, 15 Nov 2020 00:00:00 UT</pubDate>
