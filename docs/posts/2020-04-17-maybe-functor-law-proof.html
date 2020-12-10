@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>lambda is not a four letter word - Proof of functor laws for Maybe</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+
+</head>
+<body>
+
+
+
+<header>
+
+    <div class="row">
+        <div class="column"></div>
+        <div class="column" style="width:960px;">
+
+            <div class="logo">
+                <div style="float: left">
+                    <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+                </div>
+                <div>
+                    <a href="../">&nbsp;lambda is not a four letter word</a>
+                </div>
+            </div>
+
+        </div>
+        <div class="column">
+            <nav>
+                <a href="../">home</a> <a href="../about.html">about</a>
+            </nav>
+
+        </div>
+    </div>
+
+</header>
+
+
+<main class="markdown-body" role="main">
+    <h1>Proof of functor laws for Maybe</h1>
+    <div class="info">
+    Posted on April 17, 2020
+    
+        by Thomas Mahler
+    
+</div>
+
+<p>In this post I want to give a short example of how equational reasoning can be used to proof certain properties of a given piece of code in Haskell.</p>
+<p>So without further ado let’s begin:</p>
+<h2 id="known-facts">Known facts</h2>
+<p>The <code>Functor</code> instance declaration of the type <code>Maybe</code> is defined as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="kw">instance</span>  <span class="dt">Functor</span> <span class="dt">Maybe</span>  <span class="kw">where</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>    <span class="fu">fmap</span> _ <span class="dt">Nothing</span>       <span class="ot">=</span> <span class="dt">Nothing</span>       <span class="co">-- (1)</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    <span class="fu">fmap</span> f (<span class="dt">Just</span> a)      <span class="ot">=</span> <span class="dt">Just</span> (f a)    <span class="co">-- (2)</span></span></code></pre></div>
+<p>The composition operator <code>(.)</code> is defined as:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">(.) ::</span> (b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> c</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>f <span class="op">.</span> g x <span class="ot">=</span> f (g x)                        <span class="co">-- (3)</span></span></code></pre></div>
+<p>The Identity function <code>id</code> is defined as:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="fu">id</span><span class="ot"> ::</span> a <span class="ot">-&gt;</span> a</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="fu">id</span> x <span class="ot">=</span>  x                                <span class="co">-- (4)</span></span></code></pre></div>
+<h2 id="claim">Claim</h2>
+<p>The claim is that <code>Maybe</code> fulfils the two functor laws:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="dv">1</span><span class="op">.:</span> <span class="fu">fmap</span> <span class="fu">id</span> <span class="ot">=</span> <span class="fu">id</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="dv">2</span><span class="op">.:</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) <span class="ot">=</span> (<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g)</span></code></pre></div>
+<h2 id="proof-of-the-first-law">Proof of the first law</h2>
+<p><strong>Claim:</strong> <code>fmap id m = id m</code>, for any <code>m</code> of type <code>Maybe a</code>.</p>
+<p><strong>Proof.</strong> On cases of <code>m</code>.</p>
+<p><em>Case 1:</em> <code>m = Nothing</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="fu">fmap</span> <span class="fu">id</span> m <span class="ot">=</span> <span class="fu">fmap</span> <span class="fu">id</span> <span class="dt">Nothing</span> <span class="co">-- by expansion of m</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Nothing</span>         <span class="co">-- by applying equation (1)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>          <span class="ot">=</span> <span class="fu">id</span> m            <span class="co">-- by definition m, by applying equation (4)</span></span></code></pre></div>
+<p><em>Case 2:</em> <code>m = Just a</code>.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="fu">fmap</span> <span class="fu">id</span> m <span class="ot">=</span> <span class="fu">fmap</span> <span class="fu">id</span> (<span class="dt">Just</span> a) <span class="co">-- by expansion of m</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Just</span> (<span class="fu">id</span> a)      <span class="co">-- by applying equation (2)</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Just</span> a           <span class="co">-- by expansion of id (equation (4))</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>          <span class="ot">=</span> m                <span class="co">-- by definition of m</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>          <span class="ot">=</span> <span class="fu">id</span> m             <span class="co">-- by applying equation (4)</span></span></code></pre></div>
+<p>Therefore, <code>fmap id m = id m</code> in all cases.∎</p>
+<h2 id="proof-of-the-second-law">Proof of the second law</h2>
+<p><strong>Claim:</strong> <code>fmap (f . g) m = (fmap f . fmap g) m</code>, for any <code>m</code> of type <code>Maybe a</code>.</p>
+<p><strong>Proof.</strong> On cases of <code>m</code>.</p>
+<p><em>Case 1:</em> <code>m = Nothing</code>.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="fu">fmap</span> (f <span class="op">.</span> g) m      <span class="ot">=</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) <span class="dt">Nothing</span>    <span class="co">-- by expansion of m</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Nothing</span>                 <span class="co">-- by applying equation (1)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>(<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g) m <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="fu">fmap</span> g <span class="dt">Nothing</span>) <span class="co">-- by applying equation (4) and expanding m</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="fu">fmap</span> f <span class="dt">Nothing</span>          <span class="co">-- by applying equation (1)</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Nothing</span>                 <span class="co">-- by applying equation (1)</span></span></code></pre></div>
+<p><em>Case 2:</em> <code>m = Just a</code>.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">fmap</span> (f <span class="op">.</span> g) m      <span class="ot">=</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) (<span class="dt">Just</span> a)    <span class="co">-- by expansion of m</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> ((f <span class="op">.</span> g) a)         <span class="co">-- by applying equation (2)</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>(<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g) m <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="fu">fmap</span> g (<span class="dt">Just</span> a)) <span class="co">-- by applying equation (4) and expanding m</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="dt">Just</span> (g a))      <span class="co">-- by applying equation (2)</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> (f (g a)            <span class="co">-- by applying equation (2)</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> ((f <span class="op">.</span> g) a)         <span class="co">-- by applying equation (3)</span></span></code></pre></div>
+<p>Therefore, <code>fmap (f . g) m = (fmap f . fmap g) m</code> in all cases. ∎</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>You’ll see this kind of reasoning quite a lot in Haskell documentation and online discussions. The simple reason is: if you can prove something you don’t have to test it.</p>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+</footer>
+
+</body>
+</html>

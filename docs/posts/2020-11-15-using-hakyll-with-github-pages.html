@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>lambda is not a four letter word - Using Hakyll with GitHub Pages has become even easier!</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+
+</head>
+<body>
+
+
+
+<header>
+
+    <div class="row">
+        <div class="column"></div>
+        <div class="column" style="width:960px;">
+
+            <div class="logo">
+                <div style="float: left">
+                    <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+                </div>
+                <div>
+                    <a href="../">&nbsp;lambda is not a four letter word</a>
+                </div>
+            </div>
+
+        </div>
+        <div class="column">
+            <nav>
+                <a href="../">home</a> <a href="../about.html">about</a>
+            </nav>
+
+        </div>
+    </div>
+
+</header>
+
+
+<main class="markdown-body" role="main">
+    <h1>Using Hakyll with GitHub Pages has become even easier!</h1>
+    <div class="info">
+    Posted on November 15, 2020
+    
+        by Thomas Mahler
+    
+</div>
+
+<p>Over the weekend I’ve set up a <a href="https://jaspervdj.be/hakyll/">hakyll</a> powered blog on github pages (actually the one you are reading right now).</p>
+<p>I’d like to share my findings, as I found an easier way to integrate Hakyll with GitHub Pages.</p>
+<h2 id="the-documented-way">The documented way</h2>
+<p>I followed the tutorial <a href="https://jaspervdj.be/hakyll/tutorials/github-pages-tutorial.html">Using Hakyll with GitHub Pages</a>. This tutorial assumes that the GitHub pages must always be served from the root folder of a github repository.</p>
+<p>It then describes a way to achieve this by using a <code>develop</code> branch to do all the Hakyll work and finally writing the contents to the default <code>_site</code> folder. This folder is excluded from version control by entries in the <code>.gitignore</code> file both in the <code>develop</code> and <code>master</code> branches.</p>
+<p>So to finally publish the generated site you’ll have to switch to the <code>master</code> branch and copy the contents of the <code>_site</code> folder to the root folder of your project.</p>
+<p>I tried this approach and it works nicely.</p>
+<p>But then I found out that GitHub pages also allows to use a <code>docs</code> folder as the document root of your GitHub Pages site.</p>
+<p>This makes things significantly easier, as you can do all the necessary hakyll tasks and the final publishing on the same <code>master</code> branch.</p>
+<h2 id="the-easier-way">The easier way</h2>
+<h3 id="github-setup">GitHub setup</h3>
+<ol type="1">
+<li>If required, create a new GitHub repository for your blog.</li>
+<li>If required, create a master branch.</li>
+<li>in the Settings of your GitHub project define that the <code>/docs</code> folder from the <code>master</code> branch should be used as document-root of your site. Please refer to the <a href="https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site#choosing-a-publishing-source">documentation</a> in case of problems.</li>
+<li>Create a .gitignore file with at a minimum, the following entries:</li>
+</ol>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ex">_cache/</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="ex">.stack-work/</span></span></code></pre></div>
+<h3 id="local-setup">Local setup</h3>
+<p>If required, create a new Hakyll project. If you’re a stack user, there is a Hakyll template available that makes this step easy:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ex">stack</span> new myblog hakyll-template</span></code></pre></div>
+<p>Create a .gitignore file in your blog’s directory with at a minimum, the same directories listed as in the GitHub repository. Use the following git commands to setup your local repository:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="fu">git</span> init</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="co"># track all the source files for our blog.</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="fu">git</span> add .</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a><span class="co"># make our first commit</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="fu">git</span> commit -m <span class="st">&quot;initial commit.&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="co"># and add the GitHub repository as a remote.</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a><span class="fu">git</span> remote add origin <span class="op">&lt;</span>URL to your GitHub pages repository<span class="op">&gt;</span></span></code></pre></div>
+<h3 id="modify-site.hs">Modify site.hs</h3>
+<p>In order to make Hakyll generate the site into the <code>docs</code> folder we have to edit the Hakyll Main module (<code>site.hs</code> if you use the stack template) slightly:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="ot">config ::</span> <span class="dt">Configuration</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>config <span class="ot">=</span> defaultConfiguration</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>  { destinationDirectory <span class="ot">=</span> <span class="st">&quot;docs&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>  }</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>  hakyllWith config <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a>  <span class="op">...</span></span></code></pre></div>
+<h3 id="deployment">Deployment</h3>
+<p>So everything’s all setup, and we’re ready to deploy.</p>
+<p>We need to be able to run the executable that generates the website, so we need to compile it first. If you are using stack, this can be done using:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ex">stack</span> build</span></code></pre></div>
+<p>Next we get a clean build of our site:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="ex">stack</span> exec myblog clean</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a><span class="ex">stack</span> exec myblog build</span></code></pre></div>
+<p>After this step you should see a folder <code>docs</code> under your projects root folder, which contains the generated Hakyll site.</p>
+<p>Now we commit our changes:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="fu">git</span> add -A</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a><span class="fu">git</span> commit -m <span class="st">&quot;Publish.&quot;</span></span></code></pre></div>
+<p>And send them to GitHub:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">git</span> push origin master:master</span></code></pre></div>
+<p>That’s all.</p>
+<p>Now your Hakyll site should be visible under your GitHub Pages URL!</p>
+<p>The source code for my site lies under <a href="https://github.com/thma/LambdaBlog">LambdaBlog</a> GitHub project. I’ve adopted the composeconference css from the great <a href="http://katychuang.com/hakyll-cssgarden/gallery/">Katy Chuangs Hakyll CSS Garden</a>.</p>
+<h2 id="update-nov.-24th-2020">Update Nov. 24th 2020</h2>
+<p>The Hakyll project has just accepted my pull request for the Using Hakyll with GitHub Pages tutorial.</p>
+<p>The amended version will thus be online shortly, rendering this blog entry kind of obsolete…</p>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+</footer>
+
+</body>
+</html>
