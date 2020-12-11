@@ -8,7 +8,7 @@ title: About this Blog
 > [— Bob Dylan](https://www.bobdylan.com/songs/love-is-just-a-four-letter-word/)
 
 **Love is just a four letter word.** No doubt about it.
-At least in the  English language this is perfectly true, which is easy to prove in a short Haskell REPL session:
+At least in the  English language this is perfectly true, which is easy to (jokingly) prove in a short Haskell REPL session:
 
 ```haskell
 λ> length "love" == 4
@@ -16,11 +16,11 @@ True
 ```
 
 On the other hand, it feels totally wrong. Bob Dylan's song is a good example:
-The Lady uttering this phrase seems using it as a kind of magic spell trying to avoid to get hurt by deeper emotions.
-And in doing so, she in turn hurts the people around her.
+The Lady uttering this phrase seems using it as a kind of magic spell trying to avoid getting hurt by deeper emotions.
+But in doing so, she in turn hurts the people who are in love with her.
 
 So stating "love is a four letter word" is true, but reduces the actual phenomenon to a meaningless sequence of characters 
-and does not help explaining anything. (This may also be the reason why there are so many songs proclaiming "love is *not* a four letter word".)
+and does not help to explain anything. (This may also be the reason why there are so many songs proclaiming "love is *not* a four letter word".)
 
 **Lambda is not a four letter word** is true in the same sense:
 

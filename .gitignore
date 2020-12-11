@@ -23,3 +23,5 @@ cabal.project.local~
 .ghc.environment.*
 _cache/
 stack.yaml.lock
+.idea/
+*.iml
