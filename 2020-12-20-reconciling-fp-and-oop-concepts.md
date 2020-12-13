@@ -165,7 +165,6 @@ In Haskell there is no inheritance between types. But with type classes we can s
 *interface* which must be implemented by concrete types that wish to instantiate the type class. So we start with a 
 `Shape` type class:
 
-
 ```haskell
 -- | The Shape type class. It defines four functions that all concrete Shape types must implement.
 class Shape a where
@@ -338,11 +337,12 @@ Circle [(8.0,7.0), 4.0]
 Circle [(4.0,5.0), 4.0]
 ```
 
-In Haskell all values are immutable: printing the original shapes a second times 
-demonstrates that operations like move are not destructive. 
+In Haskell all values are immutable: printing the original shapes a second time
+demonstrates that operations like `move` are not destructive.
 
-So with this little setup we have shown that Haskell allows us to have both: Referential Transparency plus ad-hoc
+With this little setup we have shown that Haskell allows us to have both: Referential Transparency plus ad-hoc
 polymorphism. That is, we can use the essential elements of OOP and FP in one language.
+And: we are doing it all the time, as it's quite [common to use class types in this way.](https://www.haskell.org/tutorial/classes.html)
 
 ## Heterogeneous collections
 
@@ -361,7 +361,7 @@ types of all the elements differ.
 There are [several ways to have heterogeneous collections in Haskell](https://wiki.haskell.org/Heterogenous_collections).
 I will demonstrate just one of them, which is based on *existential types*. 
 (I have chosen this approach as it keeps the code easier to read and allows to add more `Shape` types whenever needed.
-The [sourcecode for this example](https://github.com/thma/FPvsOO/blob/master/src/Lib.hs) also demonstrates
+However, the [sourcecode for this example](https://github.com/thma/FPvsOO/blob/master/src/Lib.hs) also demonstrates
 a solution based on a simple sum type.)
 
 Once we activate the `ExistentialQuantification` language extension, we can define a data type
@@ -421,7 +421,7 @@ Triangle [(0.0,0.0), (4.0,0.0), (4.0,3.0)]
 ## Conclusion
 
 In our short Demo we have seen that Haskell supports both Referential Transparency and Polymorphism. 
-We have also seen that the reversed application operator `(&)` allows us to structure code in way that even has some 
+We have also seen that the reversed application operator `(&)` allows us to structure code in a way that even has some 
 kind of OOP look-and-feel while remaining purely functional. 
 
 If we follow Uncle Bob's argumentation to view Polymorphism to be the central concept of OOP 
@@ -437,4 +437,4 @@ are typical key features of systems implemented in Haskell.
 
 Thanks to [David Feuer](https://github.com/treeowl) for helping me with a stupid error in the existential type code!
 
-Thanks to the [Advent Of Haskel 2020 team](https://adventofhaskell.com/) for having this blog post in their advents calendar!
+Thanks to the [Advent Of Haskell 2020 team](https://adventofhaskell.com/) for having this blog post in their advents calendar!
