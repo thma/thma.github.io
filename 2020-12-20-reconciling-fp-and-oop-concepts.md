@@ -18,16 +18,15 @@ not mutually exclusive but both provide useful principles that go very well toge
 >
 > [quoted from Uncle Bob's Clean Coder Blog](https://blog.cleancoder.com/uncle-bob/2018/04/13/FPvsOO.html)
 
-He starts his argument by trying to convey the essence of both FP and OOP by giving very condensed and reduced definitions. 
+He begins his argument by reducing FP and OOP each to a single central guiding principle in order to contrast the essential features of these two approaches as clearly as possible:
 
-## Defining OOP
+## OOP condensed
 
 He gives the following characterisation of OOP:
 
-> The technique of using dynamic polymorphism to call functions without the source code of the caller 
-> depending upon the source code of the callee.
+> The technique of using dynamic polymorphism to call functions without the source code of the caller depending upon the source code of the callee.
 
-With this short stanza Uncle Bob points to the core of object orientation since its first incarnation in
+With this short statement Uncle Bob points to the core of object orientation since its first incarnation in
 the Smalltalk language:
 
 In an OO language a call of methods on a target object is dispatched based on the target object's type, its `class`.
@@ -36,7 +35,7 @@ So a method call `shape.draw()` may invoke different code based on the `class` o
 The code of the `draw` method of class `Rectangle` may be different from the code in `Circle.draw()`.
 
 Client code will just call `shape.draw()`, not even knowing which actual `Shape` sub-class it's working on. This kind of 
-polymorphism provides a very useful decoupling of clients from the callees by using the methods of the baseclass `Shape`
+polymorphism provides a very useful decoupling of clients from the target objects by using the methods of the baseclass `Shape`
 as the API for all Objects inheriting `Shape`.
 
 This mechanism allows to build elegant design like the 
@@ -46,7 +45,7 @@ which is at the core of Smalltalks GUI and which influenced many similar designs
 > MVC is the seminal insight of the whole field of graphical user interfaces. 
 > I believe the MVC work was the first to **describe** and implement **software constructs in terms of their responsibilities.** 
 > I also believe that MVC was the first significant **use of protocols to define components** instead of using 
-> concrete implementations -- each controller class had a certain set of messages it had to respond to, 
+> concrete implementations — each controller class had a certain set of messages it had to respond to, 
 > as did each view class, but otherwise there were no constraints on what they did and how they did it.
 >
 > [quoted from the C2 Wiki](http://wiki.c2.com/?ModelViewControllerHistory)
@@ -58,9 +57,9 @@ This quote conveys two major achievements of OOP:
 
 It's interesting to note that Uncle Bob does not consider Inheritance or Encapsulation to be the most important and central concepts in OOP.
 
-## Defining FP
+## FP boiled down
 
-He then gives a very brief characterization of functional programming:
+Next he gives a very brief characterization of functional programming:
 
 > Referential Transparency – no reassignment of values.
 >
@@ -75,7 +74,7 @@ Referential transparency is implying **purity** as explained in the following de
 > 
 > [quoted from Wikipedia](https://en.wikipedia.org/wiki/Referential_transparency)
 
-The second part of Uncle Bob's stanza may be implied by this definition, but I prefer to see it as separate 
+The second part of Uncle Bob's statement may be implied by this definition, but I prefer to see it as separate 
 yet closely related principle, namely **immutability**:
 
 > In object-oriented and functional programming,  an immutable object (unchangeable object) is an object whose **state 
@@ -94,14 +93,14 @@ But orthogonality does not imply that both concepts are mutually exclusive.
 It is possible to have languages that support both Dynamic Polymorphism and Referential Transparency.  
 It is not only possible, but even desirable to combine both concepts. 
 
-1. Dynamic Polymorphism is desirable as it allows building strongly decoupled designs.
+1. Dynamic Polymorphism is desirable as it allows building strongly decoupled designs:
 
-> Dependencies can be inverted across architectural boundaries. 
-> They are testable using Mocks and Fakes and other kinds of Test Doubles. 
-> Modules can be modified without forcing changes to other modules. 
-> This makes such systems much easier to change and improve.
-> 
-> Uncle Bob
+    > Dependencies can be inverted across architectural boundaries. 
+    > They are testable using Mocks and Fakes and other kinds of Test Doubles. 
+    > Modules can be modified without forcing changes to other modules. 
+    > This makes such systems much easier to change and improve.
+    > 
+    > Uncle Bob
 
 2. Referential Transparency is desirable as it allows designs that are much easier to understand, to reason about,
    to change and to improve. It also allows designs that are much better suited for scalability and concurrency
@@ -115,14 +114,16 @@ of software systems:
 > 
 > Uncle Bob
   
+In the following sections I will have a look at the Haskell language to see how the principles of Ad-hoc Polymorphism and Referential Transparency are covered in our favourite language.
+
 ## Ad-hoc Polymorphism and Referential Transparency in Haskell
 
 1. **Referential Transparency**
     
     Haskell is one of the rare incarnations of a purely functional language.
     So it goes without saying that Referential Transparency, Purity and Immutability are a given in Haskell.
-    Yes, there are things like `unsafePerformIO` but overall
-    it's very easy to write clean code in Haskell due to the strict separation of pure and impure code.
+    Yes, there are things like `unsafePerformIO` or `IORef` but overall
+    it's very easy to write clean code in Haskell due to the strict separation of pure and impure code by making side effects directly visibly in functions type signatures.
     
     Referential Transparency in Haskell is so much a given that it's quite possible to apply
     equational reasoning to proof certain properties of Haskell programs.
@@ -130,8 +131,8 @@ of software systems:
     [Proof of Functor laws for the Maybe type](https://thma.github.io/LambdaBlog/posts/2020-04-17-maybe-functor-law-proof.html).
     What's remarkable here is that you can use the same language to write your code and to 
     reason about it. 
-    This is not possible in languages that do not provide Referential Transparency. To reason about
-    programs in such languages you'd have to use external models like an abstract stack + register machine.
+    This is not possible in languages that do not provide Referential Transparency and Immutability. To reason about
+    programs in such languages you have to use external models like an abstract stack + register machine.
     
 
 2. **Ad-hoc Polymorphism** 
@@ -143,17 +144,16 @@ of software systems:
     type classes and class instances.
     
     Haskell's type classes are quite different from the classes 
-    in OOP languages. Yet they have more in common with interfaces, in that they 
-    specify a set of functions with their respective type signatures, to be implemented by instance 
-    declarations.
-
+    in OOP languages. 
+    They have more in common with interfaces in that they specify a set of functions with their respective type signatures to be implemented by instance declarations.
+   
 ## A short case study
 
 In this section I'm showcasing how these two concepts are supported in Haskell and how they can be combined without sacrificing FP principles.
 
 Let's have a look at a simple example that is frequently used in introductions to OOP: 
 a class hierarchy representing geometrical shapes. In a typical OO language, we would
-have an abstract base class `Shape` specifying a set of methods, and concrete classes 
+have an abstract base class `Shape` which specifies a set of methods, and concrete classes 
 `Rect`, `Circle`, `Triangle`, etc. which would implement specific behaviour.
 
 This simple class hierarchy is shown in the following UML diagram:
@@ -162,7 +162,7 @@ This simple class hierarchy is shown in the following UML diagram:
 
 
 In Haskell there is no inheritance between types. But with type classes we can specify an
-*interface* which must be implemented by concrete types instantiating the type class. So we start with a 
+*interface* which must be implemented by concrete types that wish to instantiate the type class. So we start with a 
 `Shape` type class:
 
 
