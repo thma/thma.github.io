@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>lambda is not a four letter word - Writing Haskell native GUI Applications with Threepenny GUI and Electron</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+</head>
+<body>
+
+<header>
+    <div class="heading">
+        <div class="logo">
+            <div style="float: left">
+                <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+            </div>
+            <div>
+                <a href="../">&nbsp;lambda is not a four letter word</a>
+            </div>
+        </div>
+        <nav>
+            <a href="../">home</a> <a href="../about.html">about</a>
+        </nav>
+    </div>
+</header>
+
+<main class="markdown-body" role="main">
+    <h1>Writing Haskell native GUI Applications with Threepenny GUI and Electron</h1>
+    <div class="info">
+    Posted on December 10, 2019
+    
+        by Thomas Mahler
+    
+</div>
+
+<p><a href="https://github.com/thma/ThreepennyElectron/actions"><img src="https://github.com/thma/ThreepennyElectron/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://snyk.io/test/github/thma/ThreepennyElectron?targetFile=package.json"><img src="https://snyk.io/test/github/thma/ThreepennyElectron/badge.svg?targetFile=package.json" alt="Known Vulnerabilities" /></a></p>
+<h2 id="tldr">tl;dr</h2>
+<p>Threepenny is an awesome Haskell library for creating browser based applications running on localhost.</p>
+<p>By combining it with the Electron.js framework you have a great toolset for writing cross-platform standalone GUI applications — completely in Haskell with a great functional reactive programming API.</p>
+<p>See it in action:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="fu">git</span> clone https://github.com/thma/ThreepennyElectron.git</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="bu">cd</span> ThreepennyElectron</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a><span class="ex">stack</span> init</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a><span class="ex">npm</span> install</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a><span class="ex">npm</span> start</span></code></pre></div>
+<p>Prerequisites: - <a href="https://git-scm.com/">Git</a> - <a href="https://docs.haskellstack.org/en/stable/README/">Haskell Stack</a> - <a href="https://nodejs.org">Nodejs</a></p>
+<h2 id="immature-support-for-writing-desktop-applications-in-haskell">Immature support for writing Desktop Applications in Haskell ?</h2>
+<p>Since reading The GUI chapter in <a href="http://book.realworldhaskell.org/read/gui-programming-with-gtk-hs.html">Real World Haskell</a> I had the impression that Haskell does not excel in GUI programming. The GUI examples in Real World Haskell are based on <a href="https://github.com/gtk2hs/gtk2hs">gtk2hs</a>. Gtk2hs is a Haskell library that allows to write platform-independent GUI applications based on the GTK library. There are some large applications based on gtk2hs or its successor <a href="https://github.com/haskell-gi/gi-gtk-hs">gi-gtk-hs</a> like the Haskell IDE <a href="http://leksah.org/">Leksah</a>. It’s rock solid technology. But it’s also quite dated and the imperative programming model is not an ideal fit for a purely functional language like Haskell.</p>
+<p>So even though I’m a Haskell enthusiast I tended to agree with <a href="https://github.com/Gabriel439/post-rfc/blob/master/sotu.md#standalone-gui-applications">Gabriel Gonzales “Immature” rating</a> of Haskell’s support for standalone GUI Applications.</p>
+<h2 id="threepenny-to-the-rescue">Threepenny to the rescue</h2>
+<p>A few weeks back I was asked to write a standalone GUI version of an existing Haskell commandline app. So I had to make up my mind about choosing a GUI library with an optimal fit to my needs:</p>
+<ul>
+<li>provide a multi-platform (Windows, MacOS, Linux) standalone GUI application.</li>
+<li>use functional reactive programming instead of event handler callbacks</li>
+<li>provide a modern look and feel e.g. material design</li>
+</ul>
+<p>I never was satisfied with the look and feel of GTK based applications. And I also wasn’t keen on going back to callback based UI programming. So I had a look at Gabriel Gonzalez great resource <a href="https://github.com/Gabriel439/post-rfc/blob/master/sotu.md">State of the Haskell ecosystem</a>.</p>
+<p>In the <a href="https://github.com/Gabriel439/post-rfc/blob/master/sotu.md#standalone-gui-applications">section on Standalone GUI applications</a> he mainly mentions GTK and Qt bindings but also some other libraries. One of them is <a href="http://wiki.haskell.org/Threepenny-gui">Threepenny GUI</a> which caught my attention because it uses the web browser as a display. And it comes with an (optional) functional reactive programming model!</p>
+<blockquote>
+<p>A program written with Threepenny is essentially a small web server that displays the user interface as a web page to any browser that connects to it. You can freely manipulate the HTML DOM and handle JavaScript events from your Haskell code.</p>
+<p>(Quoted from the <a href="https://hackage.haskell.org/package/threepenny-gui">hackage documentation</a>)</p>
+</blockquote>
+<p>My next thought was: It would be cool to use <a href="https://electronjs.org/">Electron</a> to host the Threepenny HTML/Javascript frontend against the Threepenny Haskell backend. By making use of the <a href="https://www.npmjs.com/package/electron-packager">electron packager</a> this would allow to package platform specific standalone GUI application for Windows, MacOS and Linux.</p>
+<p>I really got excited when I found out that Jeremy Barisch-Rooney already had already written a short <a href="https://github.com/HeinrichApfelmus/threepenny-gui/blob/master/doc/electron.md">HOWTO document</a> that explains the required steps to glue an ELectron frontend to a Threepenny backend.</p>
+<p>Based on this Howto I was able to deliver a native windows GUI Application with an embed Haskell backend within just a few days. I received very good feedback from the endusers and my impression was:</p>
+<blockquote>
+<p>“Thanks to Threepenny GUI support in Haskell has just become a bit more mature!”</p>
+</blockquote>
+<p>As I did not find much coverage of this specific Electron / Threepenny GUI combination in blogs or tutorials I thought it would be a good idea to spread the word by writing a short tutorial featuring the basic building blocks of this approach.</p>
+<p>So without further ado let’s get started:</p>
+<h2 id="writing-a-platform-independent-standalone-calculator-app">Writing a platform independent standalone calculator app</h2>
+<p>In order to provide a bit more than just a hello world example I’m showcasing a simple pocket calculator app. This allows to demonstrate basic features of writing real world UI applications. The calculator is based on an earlier <a href="https://bitbucket.org/astynax/threep/src/default/">Threepenny GUI demo by Aleksey Pirogov</a>.</p>
+<p>The UI of the calculator is shown in the screenshot below. It features a display, a numeric block for entering digits and a decimal point, buttons for the four basic arithmetical operations, a <strong>clear</strong> button and a <strong>clear error</strong> button:</p>
+<figure>
+<img src="../img/screenshot.png" alt /><figcaption>screenshot of the calculator</figcaption>
+</figure>
+<h3 id="the-calculator">The calculator</h3>
+<p>At the heart of an application sits the model. In this case the <a href="https://github.com/thma/ThreepennyElectron/tree/master/src/Calc.hs">calculator</a>. It is implemented as a simple state machine. The state machine knows five different states:</p>
+<ol type="1">
+<li>Entering a number into the first register A</li>
+<li>Finishing the entry of the first number by entering an Operation (+, -, *, /)</li>
+<li>Entering a number into the second register B</li>
+<li>Finishing the Operation of the second number by entering <strong>=</strong> or another arithmetic operation</li>
+<li>an Error state in case of divison by zero or by entering a wrong sequence of buttons</li>
+</ol>
+<p>This is reflected in the following data type declaration:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="co">-- | a data type representing all possible states of the calculator</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">State</span> <span class="ot">=</span> <span class="dt">EnteringA</span>     <span class="dt">Entering</span>                   <span class="co">-- ^ entering register A</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>           <span class="op">|</span> <span class="dt">EnteredAandOp</span> <span class="dt">Double</span>  <span class="dt">Operation</span>          <span class="co">-- ^ A, Op</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>           <span class="op">|</span> <span class="dt">EnteringB</span>     <span class="dt">Double</span>  <span class="dt">Operation</span> <span class="dt">Entering</span> <span class="co">-- ^ A, Op, entering register B</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>           <span class="op">|</span> <span class="dt">Calculated</span>    <span class="dt">Double</span>  <span class="dt">Operation</span> <span class="dt">Double</span>   <span class="co">-- ^ A, Op, B</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>           <span class="op">|</span> <span class="dt">Error</span>         <span class="dt">Double</span>  <span class="dt">String</span>             <span class="co">-- ^ A, Message</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>           <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a><span class="co">-- | Entering is a tuple used while entering numbers. It consists of</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">Entering</span> <span class="ot">=</span> (<span class="dt">String</span>, <span class="dt">Bool</span>) <span class="co">-- A tuple of the String representation of the entered digits</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a>                               <span class="co">-- and a flag signalling that Dot was already pressed.</span></span></code></pre></div>
+<p>Starting with an initial state</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="ot">initialState ::</span> <span class="dt">State</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>initialState <span class="ot">=</span> <span class="dt">EnteringA</span> (<span class="st">&quot;0&quot;</span>, <span class="dt">False</span>)</span></code></pre></div>
+<p>we can operate the calculator by populating it with Button events:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="co">-- in GHCi:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="op">&gt;</span> populate <span class="st">&quot;9&quot;</span> initialState</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="dt">EnteringA</span> (<span class="st">&quot;09&quot;</span>,<span class="dt">False</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a><span class="op">&gt;</span> populate <span class="st">&quot;9&quot;</span> it</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a><span class="dt">EnteringA</span> (<span class="st">&quot;099&quot;</span>,<span class="dt">False</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a><span class="op">&gt;</span> populate <span class="st">&quot;/&quot;</span> it</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a><span class="dt">EnteredAandOp</span> <span class="fl">99.0</span> <span class="dt">Div</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a><span class="op">&gt;</span> populate <span class="st">&quot;7&quot;</span> it</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a><span class="dt">EnteringB</span> <span class="fl">99.0</span> <span class="dt">Div</span> (<span class="st">&quot;7&quot;</span>,<span class="dt">False</span>)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a><span class="op">&gt;</span> populate <span class="st">&quot;=&quot;</span> it</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a><span class="dt">Calculated</span> <span class="fl">14.142857142857142</span> <span class="dt">Div</span> <span class="fl">7.0</span></span></code></pre></div>
+<p>The <code>populate</code> function is defined as :</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ot">populate ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">State</span> <span class="ot">-&gt;</span> <span class="dt">State</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>populate <span class="ot">=</span> processCommand <span class="op">.</span> parseInput</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a><span class="co">-- | process a calculator command. That is: compute a calculator state transition    </span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a><span class="ot">processCommand ::</span> <span class="dt">Command</span> <span class="ot">-&gt;</span> <span class="dt">State</span> <span class="ot">-&gt;</span> <span class="dt">State</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>processCommand cmd <span class="ot">=</span> <span class="kw">case</span> cmd <span class="kw">of</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a>  <span class="dt">Digit</span> x      <span class="ot">-&gt;</span> addDigit x</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true"></a>  <span class="dt">Dot</span>          <span class="ot">-&gt;</span> addDot</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true"></a>  <span class="dt">Operation</span> op <span class="ot">-&gt;</span> applyOp op</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true"></a>  command      <span class="ot">-&gt;</span> applyCmd command</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true"></a><span class="co">-- | parse a Command from an input string</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true"></a><span class="ot">parseInput ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Command</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true"></a>parseInput x <span class="ot">=</span> <span class="kw">case</span> x <span class="kw">of</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true"></a>  <span class="st">&quot;0&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Zero</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true"></a>  <span class="st">&quot;1&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">One</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true"></a>  <span class="st">&quot;2&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Two</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true"></a>  <span class="st">&quot;3&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Three</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true"></a>  <span class="st">&quot;4&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Four</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true"></a>  <span class="st">&quot;5&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Five</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true"></a>  <span class="st">&quot;6&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Six</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true"></a>  <span class="st">&quot;7&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Seven</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true"></a>  <span class="st">&quot;8&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Eight</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true"></a>  <span class="st">&quot;9&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Digit</span> <span class="dt">Nine</span></span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true"></a>  <span class="st">&quot;.&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Dot</span></span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true"></a>  <span class="st">&quot;+&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Operation</span> <span class="dt">Add</span></span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true"></a>  <span class="st">&quot;-&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Operation</span> <span class="dt">Sub</span></span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true"></a>  <span class="st">&quot;*&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Operation</span> <span class="dt">Mul</span></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true"></a>  <span class="st">&quot;/&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Operation</span> <span class="dt">Div</span></span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true"></a>  <span class="st">&quot;=&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Flush</span></span>
+<span id="cb5-31"><a href="#cb5-31" aria-hidden="true"></a>  <span class="st">&quot;C&quot;</span>  <span class="ot">-&gt;</span> <span class="dt">Clear</span></span>
+<span id="cb5-32"><a href="#cb5-32" aria-hidden="true"></a>  <span class="st">&quot;CE&quot;</span> <span class="ot">-&gt;</span> <span class="dt">ClearError</span></span>
+<span id="cb5-33"><a href="#cb5-33" aria-hidden="true"></a>  _    <span class="ot">-&gt;</span> <span class="fu">undefined</span></span></code></pre></div>
+<p>First the input is parsed to a Command. Based on the parsed Command (either a digit, a dot, an arithmetic operation or <code>=</code>, <code>C</code> or <code>CE</code>) the current state is modified by one of the functions <code>addDigit</code>, <code>addDot</code>, <code>applyOp</code> or <code>applyCmd</code>.</p>
+<p>I won’t dive deeper into those functions, as you will easily grasp the mechanism by studying the <a href="https://github.com/thma/ThreepennyElectron/tree/master/src/Calc.hs">source code</a>.</p>
+<h2 id="the-threepenny-gui">The Threepenny GUI</h2>
+<p>I will not give an introduction to the Threepenny GUI programming model here as Threepenny already ships with <a href="https://github.com/HeinrichApfelmus/threepenny-gui/tree/master/samples">plenty of samples</a> and a good <a href="https://github.com/HeinrichApfelmus/threepenny-gui/tree/master/doc/hal-2017">getting started tutorial</a>. Instead I will focus on presenting only those parts that are necessary to understand the calculator GUI.</p>
+<p>The application Main module consists of a single function <code>main</code>. It reads a port number from the commandline an then call <code>Ui.start</code> to launch a WebServer hosting the Ui application on that port:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>  [port] <span class="ot">&lt;-</span> getArgs</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>  Ui.start (<span class="fu">read</span> port)</span></code></pre></div>
+<p>This function will either be called when starting the application with <code>stack exec ThreepennyElectron 8080</code> or by the electron launch script main.js (which we will discuss later).</p>
+<p>The <code>Ui</code> module contains all code for rendering the HTML dom, setting up the event binding to GUI widgets and the respective interaction with application backend.</p>
+<p>Let’s start with the main entry point <code>Ui.start</code> which is called on application launch:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="ot">start ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>start port <span class="ot">=</span> startGUI defaultConfig</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>    { jsPort   <span class="ot">=</span> <span class="dt">Just</span> port</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>    , jsStatic <span class="ot">=</span> <span class="dt">Just</span> <span class="st">&quot;static&quot;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>    } setup</span></code></pre></div>
+<p>It takes the port number as parameter and starts up a web server with the Threepenny <code>startGUI</code> function. <code>startGUI</code> has the folloing type signature:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | Start server for GUI sessions.</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a>startGUI</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a><span class="ot">    ::</span> <span class="dt">Config</span>               <span class="co">-- ^ Server configuration.</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>    <span class="ot">-&gt;</span> (<span class="dt">Window</span> <span class="ot">-&gt;</span> <span class="dt">UI</span> ())    <span class="co">-- ^ Action to run whenever a client browser connects.</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>    <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span></code></pre></div>
+<p>We build our server configuration by starting with the default configuration <code>defaultConfig</code> and then modifying two properties:</p>
+<ol type="1">
+<li>setting the port number to the one read from the command line.</li>
+<li>declaring the static content (i.e any html, JavaScript and CSS content) to reside in the directory <code>./static</code>.</li>
+</ol>
+<p>The <code>(Window -&gt; UI ())</code> action parameter is filled with the function <code>setup</code>.</p>
+<p>Obviously this function must have the following signature:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="co">-- | setup window layout and event handling</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a><span class="ot">setup ::</span> <span class="dt">Window</span> <span class="ot">-&gt;</span> <span class="dt">UI</span> ()</span></code></pre></div>
+<p>As this function defines the whole layout and user interaction we will inspect it step by step.</p>
+<h3 id="creating-the-threepenny-ui-design">Creating the Threepenny UI design</h3>
+<p>The first step is to define the UI elements the overall window layout:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>setup win <span class="ot">=</span> void <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a>  <span class="co">-- define page + stylesheet</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a>  <span class="fu">return</span> win <span class="op">#</span> set title <span class="st">&quot;3PennyCalc&quot;</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a>  UI.addStyleSheet win <span class="st">&quot;semantic.css&quot;</span></span></code></pre></div>
+<p>We start by assigning a title to the window <code>win</code> and adding a stylesheet. In our example we are using the <a href="https://semantic-ui.com/">Semantic UI</a> stylesheet. (You could of course use any other css framework or roll your own.)</p>
+<p>Next we define the calculator display element <code>outputBox</code> as a <code>UI.input</code> element. These elements willbe rendered as HTML DOM elements in the browser. Threepenny provides combinators to define css classes and other html attributes. In this case we set the input field to readonly, make the text align to the right and set its width:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a>  <span class="co">-- define UI controls</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>  outputBox <span class="ot">&lt;-</span> UI.input</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>                <span class="op">#</span> set (attr <span class="st">&quot;readonly&quot;</span>) <span class="st">&quot;true&quot;</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>                <span class="op">#</span> set (attr <span class="st">&quot;style&quot;</span>) <span class="st">&quot;text-align: right; min-width: 324px&quot;</span></span></code></pre></div>
+<p>This is resulting HTML DOM element:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode html"><code class="sourceCode html"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="kw">&lt;input</span><span class="ot"> readonly=</span><span class="st">&quot;readonly&quot;</span><span class="ot"> style=</span><span class="st">&quot;text-align: right; min-width: 324px&quot;</span><span class="kw">&gt;</span></span></code></pre></div>
+<p>In the next step we define the calculator buttons for digits, operations and commands:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a>  <span class="co">-- define the button grid</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a>  buttons   <span class="ot">&lt;-</span> <span class="fu">mapM</span> (<span class="fu">mapM</span> mkButton) buttonLabels</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true"></a><span class="ot">    mkButton ::</span> (<span class="dt">Command</span>, <span class="dt">Color</span>) <span class="ot">-&gt;</span> <span class="dt">UI</span> <span class="dt">Element</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true"></a>    mkButton (cmd, clr) <span class="ot">=</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true"></a>      <span class="kw">let</span> btnLabel <span class="ot">=</span> lbl cmd <span class="co">-- get the button text</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true"></a>      <span class="kw">in</span>  UI.button <span class="op">#.</span> (<span class="st">&quot;ui &quot;</span> <span class="op">++</span> color clr <span class="op">++</span> <span class="st">&quot; button&quot;</span>)</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true"></a>                    <span class="op">#</span> set text btnLabel <span class="op">#</span> set value btnLabel</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true"></a>                    <span class="op">#</span> set (attr <span class="st">&quot;type&quot;</span>)  <span class="st">&quot;button&quot;</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true"></a>                    <span class="op">#</span> set (attr <span class="st">&quot;style&quot;</span>) <span class="st">&quot;min-width: 60px&quot;</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true"></a></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true"></a><span class="ot">    color ::</span> <span class="dt">Color</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true"></a>    color <span class="ot">=</span> <span class="fu">map</span> <span class="fu">toLower</span> <span class="op">.</span> <span class="fu">show</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true"></a></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true"></a><span class="ot">    buttonDefinitions ::</span> [[(<span class="dt">Command</span>, <span class="dt">Color</span>)]]</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true"></a>    buttonDefinitions <span class="ot">=</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true"></a>      [ [(<span class="dt">Digit</span> <span class="dt">Seven</span>, <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Eight</span>, <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Nine</span>,  <span class="dt">Grey</span>), (<span class="dt">ClearError</span>,   <span class="dt">Orange</span>), (<span class="dt">Clear</span>,        <span class="dt">Orange</span>)]</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true"></a>      , [(<span class="dt">Digit</span> <span class="dt">Four</span>,  <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Five</span>,  <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Six</span>,   <span class="dt">Grey</span>), (<span class="dt">Operation</span> <span class="dt">Add</span>, <span class="dt">Brown</span>), (<span class="dt">Operation</span> <span class="dt">Sub</span>, <span class="dt">Brown</span>)]</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true"></a>      , [(<span class="dt">Digit</span> <span class="dt">One</span>,   <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Two</span>,   <span class="dt">Grey</span>), (<span class="dt">Digit</span> <span class="dt">Three</span>, <span class="dt">Grey</span>), (<span class="dt">Operation</span> <span class="dt">Mul</span>, <span class="dt">Brown</span>), (<span class="dt">Operation</span> <span class="dt">Div</span>, <span class="dt">Brown</span>)]</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true"></a>      , [(<span class="dt">Dot</span>,  <span class="dt">Grey</span>),        (<span class="dt">Digit</span> <span class="dt">Zero</span>,  <span class="dt">Grey</span>), (<span class="dt">Flush</span>, <span class="dt">Black</span>)] ]</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true"></a></span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true"></a><span class="co">-- | Button colors</span></span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Color</span> <span class="ot">=</span> <span class="dt">Grey</span> <span class="op">|</span> <span class="dt">Orange</span> <span class="op">|</span> <span class="dt">Brown</span> <span class="op">|</span> <span class="dt">Black</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span></code></pre></div>
+<p>To understand this piece of code let’s start with <code>buttonDefinitions :: [[(Command, Color)]]</code>: a list of lists of <code>(Command, Color)</code> tuples. The outer list represents the rows, the inner list the columns in each row. The tuples represent the button commands and colors we want to see on the calculator buttons.</p>
+<p>Mapping the function <code>mkButton</code> over the <code>buttonDefinitions</code> is then used to create the <code>buttons :: [[UI Element]]</code>. Where <code>mkButton</code> defines each button as a <code>UI.button</code>, assigns a semantic.ui css class <code>("ui " ++ color c ++ " button")</code> to it (using the <code>#.</code> combinator) and sets text and other attributes by using the <code># set</code> combinator.</p>
+<p>To give an example the first element from <code>buttonDefinitions</code>: <code>(Digit Seven, Grey)</code> will be rendered in the HTML DOM as:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode html"><code class="sourceCode html"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a><span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui grey button&quot;</span><span class="ot"> value=</span><span class="st">&quot;7&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>7<span class="kw">&lt;/button&gt;</span></span></code></pre></div>
+<p>As the last step of the layouting stage we glue everything together to a nice grid and place it as the HTML body into the DOM tree. Again we use css classes from the Semantic UI framework to create a pleasant look and feel:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a>  UI.getBody win <span class="op">#</span> set (attr <span class="st">&quot;style&quot;</span>) <span class="st">&quot;overflow: hidden&quot;</span> <span class="op">#+</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a>    [ UI.div <span class="op">#.</span> <span class="st">&quot;ui raised very padded text container segment&quot;</span> <span class="op">#+</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true"></a>      [UI.table <span class="op">#+</span> [UI.row [UI.div <span class="op">#.</span> <span class="st">&quot;ui input&quot;</span> <span class="op">#+</span> [element outputBox]]] <span class="op">#+</span> </span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true"></a>                    <span class="fu">map</span> (UI.row <span class="op">.</span> <span class="fu">map</span> element) buttons]</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true"></a>    ]</span></code></pre></div>
+<p>The resulting HTML looks like follows (for brevity I’m showing only everything up to the first row of buttons):</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode html"><code class="sourceCode html"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="kw">&lt;body</span><span class="ot"> style=</span><span class="st">&quot;overflow: hidden&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a><span class="kw">&lt;noscript&gt;</span>Please enable JavaScript.<span class="kw">&lt;/noscript&gt;</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true"></a><span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;ui raised very padded text container segment&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true"></a>    <span class="kw">&lt;table&gt;</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true"></a>        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true"></a>            <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-row&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true"></a>                    <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;ui input&quot;</span><span class="kw">&gt;&lt;input</span><span class="ot"> readonly=</span><span class="st">&quot;readonly&quot;</span><span class="ot"> style=</span><span class="st">&quot;text-align: right; min-width: 324px&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true"></a>                    <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true"></a>            <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true"></a>        <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true"></a>        <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true"></a>            <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-row&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true"></a>                    <span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui grey button&quot;</span><span class="ot"> value=</span><span class="st">&quot;7&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>7<span class="kw">&lt;/button&gt;</span></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true"></a>                    <span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui grey button&quot;</span><span class="ot"> value=</span><span class="st">&quot;8&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>8<span class="kw">&lt;/button&gt;</span></span>
+<span id="cb16-21"><a href="#cb16-21" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-22"><a href="#cb16-22" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-23"><a href="#cb16-23" aria-hidden="true"></a>                    <span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui grey button&quot;</span><span class="ot"> value=</span><span class="st">&quot;9&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>9<span class="kw">&lt;/button&gt;</span></span>
+<span id="cb16-24"><a href="#cb16-24" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-25"><a href="#cb16-25" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-26"><a href="#cb16-26" aria-hidden="true"></a>                    <span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui orange button&quot;</span><span class="ot"> value=</span><span class="st">&quot;CE&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>CE<span class="kw">&lt;/button&gt;</span></span>
+<span id="cb16-27"><a href="#cb16-27" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-28"><a href="#cb16-28" aria-hidden="true"></a>                <span class="kw">&lt;div</span><span class="ot"> class=</span><span class="st">&quot;table-cell&quot;</span><span class="kw">&gt;</span></span>
+<span id="cb16-29"><a href="#cb16-29" aria-hidden="true"></a>                    <span class="kw">&lt;button</span><span class="ot"> class=</span><span class="st">&quot;ui orange button&quot;</span><span class="ot"> value=</span><span class="st">&quot;C&quot;</span><span class="ot"> type=</span><span class="st">&quot;button&quot;</span><span class="ot"> style=</span><span class="st">&quot;min-width: 60px&quot;</span><span class="kw">&gt;</span>C<span class="kw">&lt;/button&gt;</span></span>
+<span id="cb16-30"><a href="#cb16-30" aria-hidden="true"></a>                <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-31"><a href="#cb16-31" aria-hidden="true"></a>            <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-32"><a href="#cb16-32" aria-hidden="true"></a>        <span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-33"><a href="#cb16-33" aria-hidden="true"></a></span>
+<span id="cb16-34"><a href="#cb16-34" aria-hidden="true"></a>        ...</span>
+<span id="cb16-35"><a href="#cb16-35" aria-hidden="true"></a></span>
+<span id="cb16-36"><a href="#cb16-36" aria-hidden="true"></a>    <span class="kw">&lt;/table&gt;</span></span>
+<span id="cb16-37"><a href="#cb16-37" aria-hidden="true"></a><span class="kw">&lt;/div&gt;</span></span>
+<span id="cb16-38"><a href="#cb16-38" aria-hidden="true"></a><span class="kw">&lt;/body&gt;</span></span></code></pre></div>
+<p>This was everything we need to create the HTML UI as shown in the <a href="#writing-a-platform-independent-standalone-calculator-app">screenshot</a> above.</p>
+<h3 id="defining-the-application-behaviour">Defining the application behaviour</h3>
+<p>Now we come to the interesting part of UI interaction. Threepenny comes with support for functional reactive programming based on the concepts of <a href="https://wiki.haskell.org/Reactive-banana">reactive banana</a>, a cool FRP framework by Heinrich Apfelmus.</p>
+<p>So I promise we will not see any old-school event-handling in the following code:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a>  <span class="kw">let</span>  </span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a>      <span class="co">-- map buttons to Command. (buttonMap :: [(Element, Command)] )</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>      buttonMap <span class="ot">=</span> <span class="fu">zip</span> (<span class="fu">concat</span> buttons) (<span class="fu">concatMap</span> (<span class="fu">map</span> <span class="fu">fst</span>) buttonDefinitions)</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true"></a>      <span class="co">-- register mouse click events to all buttons. (clicks :: Event Command )</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true"></a>      clicks  <span class="ot">=</span> buttonClicks buttonMap</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true"></a>      <span class="co">-- use (processCommand :: Command -&gt; State -&gt; State) to build a function that computes a</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true"></a>      <span class="co">-- calculator state transition (commands :: Event (State -&gt; State))</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true"></a>      commands  <span class="ot">=</span> <span class="fu">fmap</span> processCommand clicks</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true"></a></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true"></a>  <span class="co">-- calculate behaviour by accumulating all commands, starting with the initial state    </span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true"></a>  calcBehaviour <span class="ot">&lt;-</span> accumB initialState commands</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true"></a>  <span class="co">-- use Calc.toString to extract the display string from the calculator state</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true"></a>  <span class="kw">let</span> outText  <span class="ot">=</span> <span class="fu">fmap</span> toString calcBehaviour</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true"></a>  <span class="co">-- write outText to the outputBox UI element</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true"></a>  element outputBox <span class="op">#</span> sink value outText</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true"></a><span class="ot">    buttonClicks ::</span> [(<span class="dt">Element</span>, <span class="dt">Command</span>)] <span class="ot">-&gt;</span> <span class="dt">Event</span> <span class="dt">Command</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true"></a>    buttonClicks <span class="ot">=</span> <span class="fu">foldr1</span> (UI.unionWith <span class="fu">const</span>) <span class="op">.</span> <span class="fu">map</span> makeClick</span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true"></a>      <span class="kw">where</span></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true"></a>        makeClick (element, cmd) <span class="ot">=</span> UI.pure cmd <span class="op">&lt;@</span> UI.click element</span></code></pre></div>
+<p>We’ll walk through this code from top to bottom. First <code>buttonMap</code> is defined as an associative list mapping all calculator buttons to their respective <code>Command</code>s.</p>
+<p>Next we define <code>clicks :: Event Command</code>. Where <code>Event a</code> represents a stream of events as they occur in time.</p>
+<p>This <code>clicks</code> event stream is generated by applying <code>buttonClicks</code> to the button map we created in the first step.</p>
+<p>So effectively each time a calculator button is clicked we receive the <code>Command</code> represented by the button.</p>
+<p>In the next step we use <code>processCommand</code> to generate calculator state transition functions based on each command in the stream.</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a>commands  <span class="ot">=</span> <span class="fu">fmap</span> processCommand clicks</span></code></pre></div>
+<p>We have to use <code>fmap</code> to access the command in the <code>Event</code> container. The resulting type of <code>commands</code> is thus <code>commands :: Event (State -&gt; State)</code>.</p>
+<p>Now effectively <code>commands</code> is a stream of <code>(State -&gt; State)</code> calculator state transitions.</p>
+<p>In the following step we define a <code>Behaviour</code> based on the <code>commands</code> stream of state transitions. In Threepenny <code>Behavior a</code> represents a value that varies in time. Think of it as</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">Behavior</span> a <span class="ot">=</span> <span class="dt">Time</span> <span class="ot">-&gt;</span> a</span></code></pre></div>
+<p>The Threepenny function <code>accumB</code> can be used to compute behaviour starting from an initial state and a stream of state transition events:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true"></a><span class="ot">accumB ::</span> <span class="dt">MonadIO</span> m <span class="ot">=&gt;</span> a <span class="op">--^</span> the initial value</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true"></a>       <span class="ot">-&gt;</span> <span class="dt">Event</span> (a <span class="ot">-&gt;</span> a) <span class="op">--^</span> the stream state transitions</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true"></a>       <span class="ot">-&gt;</span> m (<span class="dt">Behavior</span> a) <span class="op">--^</span> the resulting <span class="dt">Behaviour</span> (that is a value varrying <span class="kw">in</span> time )</span></code></pre></div>
+<p>So once <code>calcBehaviour &lt;- accumB initialState commands</code> did all the heavy lifting we just have to extract the display text from the state and to render it in the outputBox:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a>  <span class="co">-- use Calc.toString to extract the display string from the calculator state </span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true"></a>  <span class="kw">let</span> outText  <span class="ot">=</span> <span class="fu">fmap</span> toString calcBehaviour</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true"></a>  <span class="co">-- write outText to the outputBox UI element</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true"></a>  element outputBox <span class="op">#</span> sink value outText</span></code></pre></div>
+<h2 id="recap-what-weve-got-so-far">Recap: what we’ve got so far</h2>
+<p>Until now we have written a calculator as a Threepenny GUI application. We can build and execute it with the following stack commands:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a><span class="ex">stack</span> init</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true"></a><span class="ex">stack</span> install</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true"></a><span class="ex">stack</span> exec ThreepennyElectron 8023</span></code></pre></div>
+<p>If you now navigate your WebBrowser to <code>http://127.0.0.1:8023</code> you’ll see the calculator in action.</p>
+<p>To ease the usage of this basic Threepenny application when working in GHCi I have provided a short helper function <code>up</code> which will automatically open the Threepenny application in your default web browser:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true"></a><span class="co">-- | launch application in default web browser</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true"></a><span class="ot">up ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true"></a>up <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true"></a>  <span class="kw">let</span> port <span class="ot">=</span> <span class="dv">8023</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true"></a>  launchAppInBrowser port</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true"></a>  start port</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true"></a></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true"></a><span class="co">-- | convenience function that opens the 3penny UI in the default web browser</span></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true"></a><span class="ot">launchAppInBrowser::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Maybe</span> <span class="dt">Handle</span>, <span class="dt">Maybe</span> <span class="dt">Handle</span>, <span class="dt">Maybe</span> <span class="dt">Handle</span>, <span class="dt">ProcessHandle</span>)</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true"></a>launchAppInBrowser port <span class="ot">=</span> <span class="kw">case</span> os <span class="kw">of</span></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true"></a>  <span class="st">&quot;mingw32&quot;</span> <span class="ot">-&gt;</span> createProcess  (shell <span class="op">$</span> <span class="st">&quot;start &quot;</span>    <span class="op">++</span> url)</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true"></a>  <span class="st">&quot;darwin&quot;</span>  <span class="ot">-&gt;</span> createProcess  (shell <span class="op">$</span> <span class="st">&quot;open &quot;</span>     <span class="op">++</span> url)</span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true"></a>  _         <span class="ot">-&gt;</span> createProcess  (shell <span class="op">$</span> <span class="st">&quot;xdg-open &quot;</span> <span class="op">++</span> url)</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true"></a>  <span class="kw">where</span> url <span class="ot">=</span> <span class="st">&quot;http://localhost:&quot;</span> <span class="op">++</span> <span class="fu">show</span> port</span></code></pre></div>
+<h2 id="electron-integration">Electron Integration</h2>
+<p>So now we are able to execute our calculator as a local web application in our web browser. But our aim was to have a local standalone application that does not rely on a browser.</p>
+<p>That’s where we bring in Electron to bundle the Threepenny GUI Haskell backend with a Chromium based fronted.</p>
+<h3 id="providing-a-very-straightforward-wrapper-script">Providing a very straightforward wrapper script</h3>
+<p><a href="https://electronjs.org/">Electron</a> is a popular JavaScript framework that allows to write cross platform desktop applications based on Chromium. Real world applications like <a href="https://atom.io/">Atom</a>, <a href="https://code.visualstudio.com/">Visual Studio Code</a> or <a href="https://slack.com/intl/de-de/downloads/windows">Slack</a> are good <a href="https://electronjs.org/apps">examples of what can be achieved with it</a>.</p>
+<p>As I already mentioned in the introduction, Heinrich Apfelmus already <a href="https://github.com/HeinrichApfelmus/threepenny-gui/blob/master/doc/electron.md">created a tutorial</a> on how to write an electron wrapper around a Threepenny GUI application.</p>
+<p>Let’s start with a short look at the <a href="https://github.com/thma/ThreepennyElectron/tree/master/main.js">Javascript code in</a>.</p>
+<p>This script detects a free tcp/ip port on localhost and spawns the ThreepennyElectron applications as a separate processes. The free port is handed over to the ThreepennyELectron app as a commandline parameter.</p>
+<p>Once the ThreepennyElectron server is accepting connections we can safely open the application window and load the local url as it’s content.</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a><span class="co">// Relative path to the Threepenny binary.</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true"></a><span class="kw">const</span> relBin <span class="op">=</span> <span class="st">'./build/ThreepennyElectron'</span><span class="op">;</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true"></a></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true"></a><span class="co">// Assign a random port to run on.</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true"></a><span class="fu">freeport</span>((err<span class="op">,</span> port) <span class="kw">=&gt;</span> {</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true"></a>  <span class="cf">if</span> (err) <span class="cf">throw</span> err<span class="op">;</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true"></a></span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true"></a>  <span class="kw">const</span> url <span class="op">=</span> <span class="vs">`http://localhost:</span><span class="sc">${</span>port<span class="sc">}</span><span class="vs">`</span><span class="op">;</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true"></a>  <span class="kw">let</span> child <span class="op">=</span> <span class="kw">null</span><span class="op">;</span> <span class="co">// the Threepenny Server process we will spawn</span></span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true"></a></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true"></a>  <span class="co">// Keep a global reference of the window object, if we don't, the window will</span></span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true"></a>  <span class="co">// be closed automatically when the JavaScript object is garbage collected.</span></span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true"></a>  <span class="kw">let</span> win<span class="op">;</span></span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true"></a></span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true"></a>  <span class="co">// Called when Electron has finished initialization and is ready to create</span></span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true"></a>  <span class="co">// browser windows. Some APIs can only be used after this event occurs. We</span></span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true"></a>  <span class="co">// start the child process and wait before loading the web page.</span></span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true"></a>  app<span class="op">.</span><span class="fu">on</span>(<span class="st">'ready'</span><span class="op">,</span> () <span class="kw">=&gt;</span> {</span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true"></a>    child <span class="op">=</span> <span class="fu">spawn</span>(path<span class="op">.</span><span class="fu">join</span>(<span class="bu">__dirname</span><span class="op">,</span> relBin)<span class="op">,</span> [port])<span class="op">;</span></span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true"></a>    child<span class="op">.</span><span class="at">stdout</span><span class="op">.</span><span class="fu">setEncoding</span>(<span class="st">'utf8'</span>)<span class="op">;</span></span>
+<span id="cb24-21"><a href="#cb24-21" aria-hidden="true"></a>    child<span class="op">.</span><span class="at">stderr</span><span class="op">.</span><span class="fu">setEncoding</span>(<span class="st">'utf8'</span>)<span class="op">;</span></span>
+<span id="cb24-22"><a href="#cb24-22" aria-hidden="true"></a>    child<span class="op">.</span><span class="at">stdout</span><span class="op">.</span><span class="fu">on</span>(<span class="st">'data'</span><span class="op">,</span> <span class="bu">console</span><span class="op">.</span><span class="fu">log</span>)<span class="op">;</span></span>
+<span id="cb24-23"><a href="#cb24-23" aria-hidden="true"></a>    child<span class="op">.</span><span class="at">stderr</span><span class="op">.</span><span class="fu">on</span>(<span class="st">'data'</span><span class="op">,</span> <span class="bu">console</span><span class="op">.</span><span class="fu">log</span>)<span class="op">;</span></span>
+<span id="cb24-24"><a href="#cb24-24" aria-hidden="true"></a>    child<span class="op">.</span><span class="fu">on</span>(<span class="st">'close'</span><span class="op">,</span> code <span class="kw">=&gt;</span></span>
+<span id="cb24-25"><a href="#cb24-25" aria-hidden="true"></a>      <span class="bu">console</span><span class="op">.</span><span class="fu">log</span>(<span class="vs">`Threepenny app exited with code </span><span class="sc">${</span>code<span class="sc">}</span><span class="vs">`</span>))<span class="op">;</span></span>
+<span id="cb24-26"><a href="#cb24-26" aria-hidden="true"></a></span>
+<span id="cb24-27"><a href="#cb24-27" aria-hidden="true"></a>    <span class="co">// Wait until the Threepenny server is ready for connections.</span></span>
+<span id="cb24-28"><a href="#cb24-28" aria-hidden="true"></a>    <span class="fu">waitOn</span>({ <span class="dt">resources</span><span class="op">:</span> [url]<span class="op">,</span> timeout }<span class="op">,</span> (err_) <span class="kw">=&gt;</span> {</span>
+<span id="cb24-29"><a href="#cb24-29" aria-hidden="true"></a>      <span class="cf">if</span> (err_) <span class="cf">throw</span> err_<span class="op">;</span></span>
+<span id="cb24-30"><a href="#cb24-30" aria-hidden="true"></a>      <span class="fu">createWindow</span>()<span class="op">;</span></span>
+<span id="cb24-31"><a href="#cb24-31" aria-hidden="true"></a>    })<span class="op">;</span></span>
+<span id="cb24-32"><a href="#cb24-32" aria-hidden="true"></a>  })<span class="op">;</span></span>
+<span id="cb24-33"><a href="#cb24-33" aria-hidden="true"></a></span>
+<span id="cb24-34"><a href="#cb24-34" aria-hidden="true"></a>  <span class="kw">function</span> <span class="fu">createWindow</span>() {</span>
+<span id="cb24-35"><a href="#cb24-35" aria-hidden="true"></a>      <span class="co">// Create the browser window.</span></span>
+<span id="cb24-36"><a href="#cb24-36" aria-hidden="true"></a>      win <span class="op">=</span> <span class="kw">new</span> <span class="fu">BrowserWindow</span>({</span>
+<span id="cb24-37"><a href="#cb24-37" aria-hidden="true"></a>          <span class="dt">width</span><span class="op">:</span> <span class="dv">470</span><span class="op">,</span></span>
+<span id="cb24-38"><a href="#cb24-38" aria-hidden="true"></a>          <span class="dt">height</span><span class="op">:</span> <span class="dv">370</span><span class="op">,</span></span>
+<span id="cb24-39"><a href="#cb24-39" aria-hidden="true"></a>          <span class="dt">maximizable</span><span class="op">:</span> <span class="kw">false</span><span class="op">,</span></span>
+<span id="cb24-40"><a href="#cb24-40" aria-hidden="true"></a>          <span class="dt">resizable</span><span class="op">:</span> <span class="kw">false</span><span class="op">,</span></span>
+<span id="cb24-41"><a href="#cb24-41" aria-hidden="true"></a>          <span class="dt">icon</span><span class="op">:</span> <span class="st">'calc.ico'</span><span class="op">,</span></span>
+<span id="cb24-42"><a href="#cb24-42" aria-hidden="true"></a>          <span class="dt">title</span><span class="op">:</span> <span class="st">'3PennyCalc...'</span></span>
+<span id="cb24-43"><a href="#cb24-43" aria-hidden="true"></a>      })<span class="op">;</span></span>
+<span id="cb24-44"><a href="#cb24-44" aria-hidden="true"></a></span>
+<span id="cb24-45"><a href="#cb24-45" aria-hidden="true"></a>      win<span class="op">.</span><span class="fu">removeMenu</span>()<span class="op">;</span></span>
+<span id="cb24-46"><a href="#cb24-46" aria-hidden="true"></a>      <span class="bu">console</span><span class="op">.</span><span class="fu">log</span>(<span class="vs">`Loading URL: </span><span class="sc">${</span>url<span class="sc">}</span><span class="vs">`</span>)<span class="op">;</span></span>
+<span id="cb24-47"><a href="#cb24-47" aria-hidden="true"></a>      win<span class="op">.</span><span class="fu">loadURL</span>(url)<span class="op">;</span></span>
+<span id="cb24-48"><a href="#cb24-48" aria-hidden="true"></a></span>
+<span id="cb24-49"><a href="#cb24-49" aria-hidden="true"></a>      <span class="co">// Emitted when the window is closed.</span></span>
+<span id="cb24-50"><a href="#cb24-50" aria-hidden="true"></a>      win<span class="op">.</span><span class="fu">on</span>(<span class="st">'closed'</span><span class="op">,</span> () <span class="kw">=&gt;</span> {</span>
+<span id="cb24-51"><a href="#cb24-51" aria-hidden="true"></a>          <span class="co">// Dereference the window object for garbage collection.</span></span>
+<span id="cb24-52"><a href="#cb24-52" aria-hidden="true"></a>          win <span class="op">=</span> <span class="kw">null</span><span class="op">;</span></span>
+<span id="cb24-53"><a href="#cb24-53" aria-hidden="true"></a>      })<span class="op">;</span></span>
+<span id="cb24-54"><a href="#cb24-54" aria-hidden="true"></a>  }</span>
+<span id="cb24-55"><a href="#cb24-55" aria-hidden="true"></a></span>
+<span id="cb24-56"><a href="#cb24-56" aria-hidden="true"></a>})<span class="op">;</span></span></code></pre></div>
+<h3 id="npm-handling">NPM handling</h3>
+<p>To make things easier to handle I’ve improved the npm integration a bit. Once you have initialized stack with <code>stack init</code> you can build and run the calculator app (including the haskell backend) with just two npm commands:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true"></a><span class="ex">npm</span> install</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true"></a><span class="ex">npm</span> start</span></code></pre></div>
+<p>The trick was to define a prestart script in <a href="https://github.com/thma/ThreepennyElectron/tree/master/package.json">package.json</a></p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode javascript"><code class="sourceCode javascript"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true"></a><span class="st">&quot;prestart&quot;</span><span class="op">:</span> <span class="st">&quot;node ./stack-install.js&quot;</span><span class="op">,</span></span></code></pre></div>
+<p>This script simply does a <code>stack install --local-bin-path build</code>. This guarantees that the ThreepennyElectron binary is residing under <code>./build/ThreepennyElectron</code> as expected by the <code>main.js</code> script.</p>
+<p>With the following npm command you can create application package ready for deployment on your platform:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true"></a><span class="ex">npm</span> run pack-app</span></code></pre></div>
+<p>You can use the parameters <code>--platform</code> and <code>--arch</code> to create packages for other platforms as well.</p>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a> | 
+    Source code is available at 
+    <a href="https://github.com/thma/thma.github.io">GitHub</a>
+</footer>
+
+</body>
+</html>
