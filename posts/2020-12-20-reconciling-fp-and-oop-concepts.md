@@ -4,12 +4,15 @@ author: Thomas Mahler
 tags: haskell, OOP, FP, Object Oriented Programming, Functional Programming, Referential Transparency, Polymorphism
 ---
 
-Some time ago I came across a very interesting post on the Clean-Coder-Blog, 
+This post is part of the [Advent of Haskell 2020 series](https://adventofhaskell.com/). Hence, I tried to keep the content
+easy and enjoyable but still present some food for thought!
+
+Some time ago I came across an interesting post on the Clean-Coder-Blog, 
 which kept me busy for weeks until I finally decided to write this article.
 
-In his blog-post Uncle Bob tries to reconcile concepts from both Functional Programming and Object Oriented Programming  
-by explaining that both approaches are
-not mutually exclusive but both provide useful principles that go very well together and in fact are complementary:
+In his blog-post Uncle Bob tries to reconcile concepts from both Functional Programming and Object Oriented Programming 
+by explaining that both approaches are not mutually exclusive but both provide useful principles that go very well 
+together and in fact are complementary:
 
 > In this blog I will make the case that while OO and FP are orthogonal, 
 > they are not mutually exclusive. 
@@ -90,8 +93,8 @@ The concepts of Polymorphism and Referential Transparency are orthogonal. You ca
 Referential Transparency – and vice versa.
 
 But orthogonality does not imply that both concepts are mutually exclusive. 
-It is possible to have languages that support both Dynamic Polymorphism and Referential Transparency.  
-It is not only possible, but even desirable to combine both concepts. 
+It is possible to have languages that support both Dynamic Polymorphism and Referential Transparency.
+It is not only possible, but even desirable to combine both concepts:
 
 1. Dynamic Polymorphism is desirable as it allows building strongly decoupled designs:
 
@@ -143,9 +146,9 @@ In the following sections I will have a look at the Haskell language to see how 
     values as compared to when applied to integers. In Haskell, this kind of polymorphism is achieved with 
     type classes and class instances.
     
-    Haskell's type classes are quite different from the classes 
-    in OOP languages. 
-    They have more in common with interfaces in that they specify a set of functions with their respective type signatures to be implemented by instance declarations.
+    Haskell's type classes are quite different from the classes in OOP languages. 
+    They have more in common with interfaces in that they specify a set of functions with their respective type 
+    signatures to be implemented by instance declarations.
    
 ## A short case study
 
@@ -232,7 +235,7 @@ widthAndHeight :: Rect -> (Double, Double)
 widthAndHeight (Rect (Point x_a y_a) (Point x_b y_b)) = (abs (x_b - x_a), abs (y_b - y_a))
 ```
 
-There is nothing special here, we are just implementing the functions spefified by the `Shape` type class
+There is nothing special here, we are just implementing the functions specified by the `Shape` type class
 in a most simple way.
 
 On to `Triangle`: 
@@ -300,8 +303,14 @@ Rectangle [(0.0,0.0), (5.0,4.0)]
 Triangle [(0.0,0.0), (4.0,0.0), (4.0,3.0)]
 ```
 
-By importing the reversed application operator `(&)` we can create a more OOP look-and-feel to our code.
-Depending on the context it may be more convenient to write read code using `(&)` even when 
+This code makes use of Haskell's Ad-hoc polymorphism and elegantly fulfils the requirements given for 
+Dynamic Polymorphism in Uncle Bob's blog post: 
+*"call functions without the source code of the caller depending upon the source code of the callee"*. On the call site,
+we just rely on the function `draw :: (Shape a) => a -> IO ()`. This type signature assures us that it will work
+on any concrete type `a` that instantiates the `Shape` type class.
+
+By making use of the reversed application operator `(&)` we can create a more OOP look-and-feel to our code.
+Depending on the context it may be more convenient to write and read code using `(&)` even when 
 you are not after an OOP look-and-feel.
 
 ```haskell
