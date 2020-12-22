@@ -380,7 +380,7 @@ instantiating the `Shape` type class:
 ```haskell
 {-# LANGUAGE ExistentialQuantification #-}
 
-data ShapeType = forall a . Shape a => MkShape a
+data ShapeType = forall a . (Show a, Shape a) => MkShape a
 ```
 
 Now we can make `ShapeType` an instance of `Shape` which will delegate all function calls to
