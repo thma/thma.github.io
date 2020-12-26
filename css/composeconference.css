@@ -15,14 +15,13 @@ body {
 }
 
 header {
-    width: 100%;
+    max-width: 100%;
     overflow: hidden;
-    position: fixed;
+    /*position: fixed;*/
     top: 0;
     padding: 1em 1em 1em 1em;
     background: #f6f8fa;
-    z-index: 1000;
-    float: center;
+    /*z-index: 1000;*/
 }
 
 .heading {    
@@ -58,10 +57,10 @@ header nav a:hover{
 }
 
 main {
-    margin-top: 10em;
+    margin-top: 1em;
     margin-left: auto;
     margin-right: auto;
-    margin-bottom: 10em;
+    margin-bottom: 5em;
     padding-left: 1em;
     padding-right: 1em;
     max-width: 52em;
@@ -72,12 +71,12 @@ footer {
     color: #999999;
     font-size: 16px;
     text-align: left;
-    height: 3em;
+    height: 2em;
     position: fixed;
     bottom: 0;
-    overflow: auto;
-    padding-top: 1em;
-    padding-left: 1em;
+    overflow: hidden;
+    padding-top: 0.5em;
+    padding-left: 0.5em;
     background: #f6f8fa;
     left: 0;
     width: 100%;
