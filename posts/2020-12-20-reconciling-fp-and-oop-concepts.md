@@ -370,8 +370,13 @@ types of all the elements differ.
 There are [several ways to have heterogeneous collections in Haskell](https://wiki.haskell.org/Heterogenous_collections).
 I will demonstrate just one of them, which is based on *existential types*. 
 (I have chosen this approach as it keeps the code easier to read and allows to add more `Shape` types whenever needed.
+
+There is also a recent blog post on [Existential Haskell](https://blog.sumtypeofway.com/posts/existential-haskell.html)
+which demonstrates some interesting use cases for existential types.
+
 However, the [sourcecode for this example](https://github.com/thma/FPvsOO/blob/master/src/Lib.hs) also demonstrates
 a solution based on a simple sum type.)
+
 
 Once we activate the `ExistentialQuantification` language extension, we can define a data type
 `ShapeType` with a single constructor `MkShape` that will take any instance of a concrete type
