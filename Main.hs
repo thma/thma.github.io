@@ -9,7 +9,7 @@ main :: IO ()
 main = do
   E.setLocaleEncoding E.utf8
   hakyllWith config $ do
-    match "static/*/*" $ do
+    match "static/*" $ do
       route idRoute
       compile copyFileCompiler
 
