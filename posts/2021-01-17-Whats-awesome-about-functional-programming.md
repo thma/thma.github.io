@@ -14,15 +14,15 @@ So I prepared a condensed slide deck focussing on the more elementary sections, 
 
 Recently I stumbled across [IHaskell](https://github.com/gibiansky/IHaskell), a Haskell kernel for the Jupyter Notebook platform. As I like the interactive approach of Jupyter notebooks I transferred my presentation into the Jupyter notebook format.
 
-As I'm quite happy with the result I'd like to make it available to a wider audience. I have prepared three different variants:
+As I'm quite happy with the result I'd like to make it available to a wider audience. I have prepared three different versions:
 
 1. [The raw notebook](https://raw.githubusercontent.com/thma/IHaskellExperiments/main/WhatsAwesomeAboutFunctionalProgramming.ipynb). You can open it in your local Jupyter + IHaskell setup [(Please follow this installation guide)](https://github.com/gibiansky/IHaskell#installation) to enjoy the full interactivity that Jupyter notebooks provide.
 
-2. The notebook as rendered by a the 
+2. The notebook as rendered by 
 [nbviewer.jupyter.org](https://nbviewer.jupyter.org/github/thma/IHaskellExperiments/blob/main/WhatsAwesomeAboutFunctionalProgramming.ipynb).
 Unfortunately it's not interactive. But you won't need a local Jupyter installation.
 
-3. A [reveal.js presentation](/static/WhatsAwesomeAboutFunctionalProgramming.slides.html) which I generated from the notebook.
+3. A [reveal.js presentation](/static/WhatsAwesomeAboutFunctionalProgramming.slides.html) which I generated from the notebook. This version just needs a web-browser.
 
 
 
