@@ -37,7 +37,7 @@ The code shown in this blog [is also available on GitHub](https://github.com/thm
 In abstract algebra, a monoid is a *set* equipped with an *associative 
 binary operation* and an *identity element*.
 
-The simplest example for a *commutative Monoid* are the natural numbers under addition with 0 as the identity (or neutral) element. 
+The simplest example for a *commutative Monoid* is $(\mathbb{N}_0, +, 0)$: the natural numbers under addition with $0$ as the identity (or neutral) element. 
 We can use QuickCheck to verify that indeed the Monoid laws plus commutativity are maintained.
 
 If we want to use `GHC.Natural` type to represent natural numbers, 
@@ -161,8 +161,8 @@ We formulated the property in the wrong way. The `(⊕)` *may be commutative for
 edge cases, e.g. when one or both of the arguments are `""`.
 But it is not commutative *in general* – that is for all possible arguments.
 
-We could rephrase this property as *"There exists at least one pair of arguments `(x, y)`
-for which `(⊕)` is not commutative"*:
+We could rephrase this property as *"There exists at least one pair of arguments $(x, y)$
+for which $\oplus$ is not commutative"*:
 
 $$\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ]$$
 
@@ -187,20 +187,18 @@ forSome gen prop =
     once $ disjoin $ replicate 1000 $ forAll gen prop
 ```
 
-Now we can rewrite the property "There exists at least one pair of arguments
-for which `(⊕)` is not commutative" as follows:
+Now we can rewrite the property $\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ]$ as follows:
 
 ```haskell
     it "is not commutative (via exists)" $
       exists $ \(x,y) -> x ⊕ y /= y ⊕ x
 ```
-
-The output now fits much better into our intuitive understanding:
+I like how close the Haskell code stays to the concise mathematical formulation! 
+The output of this test fits much better into our intuitive understanding:
 
 ```bash
     is not commutative (via exists)
       +++ OK, passed 1 test.
-
 ```
 
 ## Sequential MapReduce
@@ -283,10 +281,10 @@ sequence will eventually result in wrong computations.
 So our conclusion is: 
 
 > If the MapReduce algorithm is parallelized in the way that I outlined above &mdash; which may result in random changes of the 
-> sequence of list elements in the reduction phase &mdash; it will only work correct if the intermediary data structure is a 
-> commutative monoid under the reduce operation.
+> order of list elements in the reduction phase &mdash; it will only work correct if the intermediary data structure is a 
+> *commutative* Monoid under the reduce operation.
 
-In the following section we will implement a parallel MapReduce in Haskell in try to validate our theory with property based testing.
+In the following section we will implement a parallel MapReduce in Haskell in order to validate our theory with property based testing.
 
 ## Parallel MapReduce in Haskell
 
@@ -396,8 +394,8 @@ parMap strat f = (`using` parList strat) . map f
 ```
 
 The `parMap` evaluation strategy will spark a parallel evaluation for each element of the `input` list. 
-Nevertheless the actual sequence of elements will not be changed as internally the classical sequential
-`map` function is used which will not change the sequence of elements. So the reduce phase will never receive a changed sequence of elements from the map phase,
+Nevertheless the actual order of elements will not be changed as internally the classical sequential
+`map` function is used which will not change the order of elements. So the reduce phase will never receive a changed order of elements from the map phase,
 even if `map`-computations for the individual list elements might be executed in random order!
 
 `mapResult` will always be `["hello", "my ", "dear ", "folks"]`.

@@ -74,7 +74,7 @@
 <p>The code shown in this blog <a href="https://github.com/thma/CommutativeMonoid">is also available on GitHub</a></p>
 <h2 id="commutative-monoids">Commutative Monoids</h2>
 <p>In abstract algebra, a monoid is a <em>set</em> equipped with an <em>associative binary operation</em> and an <em>identity element</em>.</p>
-<p>The simplest example for a <em>commutative Monoid</em> are the natural numbers under addition with 0 as the identity (or neutral) element. We can use QuickCheck to verify that indeed the Monoid laws plus commutativity are maintained.</p>
+<p>The simplest example for a <em>commutative Monoid</em> is <span class="math inline">\((\mathbb{N}_0, +, 0)\)</span>: the natural numbers under addition with <span class="math inline">\(0\)</span> as the identity (or neutral) element. We can use QuickCheck to verify that indeed the Monoid laws plus commutativity are maintained.</p>
 <p>If we want to use <code>GHC.Natural</code> type to represent natural numbers, we first have to make <code>Natural</code> instantiate the <code>Arbitrary</code> type class which is used by QuickCheck to automatically generate test data:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Test.QuickCheck</span> (<span class="dt">Arbitrary</span>, arbitrary, <span class="dt">NonNegative</span> (..))</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">GHC.Natural</span>     (<span class="dt">Natural</span>, naturalFromInteger)</span>
@@ -142,7 +142,7 @@
 <span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>         <span class="st">&quot;&quot;</span></span>
 <span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a>       <span class="ex">not</span> expected: <span class="st">&quot;&quot;</span></span></code></pre></div>
 <p>We formulated the property in the wrong way. The <code>(⊕)</code> <em>may be commutative for some</em> edge cases, e.g. when one or both of the arguments are <code>""</code>. But it is not commutative <em>in general</em> – that is for all possible arguments.</p>
-<p>We could rephrase this property as <em>“There exists at least one pair of arguments <code>(x, y)</code> for which <code>(⊕)</code> is not commutative”</em>:</p>
+<p>We could rephrase this property as <em>“There exists at least one pair of arguments <span class="math inline">\((x, y)\)</span> for which <span class="math inline">\(\oplus\)</span> is not commutative”</em>:</p>
 <p><span class="math display">\[\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ]\]</span></p>
 <p>QuickCheck does not come with a mechanism for <em>existential quantification</em>. But as is has <code>forAll</code>, that is <em>universal quantification</em>. So we can try to make use of the following equivalence:</p>
 <p><span class="math display">\[\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ] 
@@ -156,10 +156,10 @@
 <span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a>forSome gen prop <span class="ot">=</span></span>
 <span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>  mapResult (\r <span class="ot">-&gt;</span> r {P.reason <span class="ot">=</span> <span class="st">&quot;No witness found.&quot;</span>, P.callbacks <span class="ot">=</span> []}) <span class="op">$</span></span>
 <span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>    once <span class="op">$</span> disjoin <span class="op">$</span> <span class="fu">replicate</span> <span class="dv">1000</span> <span class="op">$</span> forAll gen prop</span></code></pre></div>
-<p>Now we can rewrite the property “There exists at least one pair of arguments for which <code>(⊕)</code> is not commutative” as follows:</p>
+<p>Now we can rewrite the property <span class="math inline">\(\exists (x,y) \left [ x \oplus y \neq y \oplus x \right ]\)</span> as follows:</p>
 <div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>    it <span class="st">&quot;is not commutative (via exists)&quot;</span> <span class="op">$</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a>      exists <span class="op">$</span> \(x,y) <span class="ot">-&gt;</span> x ⊕ y <span class="op">/=</span> y ⊕ x</span></code></pre></div>
-<p>The output now fits much better into our intuitive understanding:</p>
+<p>I like how close the Haskell code stays to the concise mathematical formulation! The output of this test fits much better into our intuitive understanding:</p>
 <div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a>    <span class="ex">is</span> not commutative (via exists)</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 1 test.</span></code></pre></div>
 <h2 id="sequential-mapreduce">Sequential MapReduce</h2>
@@ -198,9 +198,9 @@
 <p>If we assume the same sequence as above, the third element of the input list would be reversed first, resulting in a first reduction step <code>"dear " ⊕ ""</code>. Next the first, the fourth and finally the second element would be reversed, resulting in a reduction sequence of <code>"my " ⊕ "folks " ⊕ "hello " ⊕ "dear " ⊕ "" = "my folks hello dear "</code>. As string concatenation is not commutative it does not really come as a surprise that random changes to the reduction sequence will eventually result in wrong computations.</p>
 <p>So our conclusion is:</p>
 <blockquote>
-<p>If the MapReduce algorithm is parallelized in the way that I outlined above — which may result in random changes of the sequence of list elements in the reduction phase — it will only work correct if the intermediary data structure is a commutative monoid under the reduce operation.</p>
+<p>If the MapReduce algorithm is parallelized in the way that I outlined above — which may result in random changes of the order of list elements in the reduction phase — it will only work correct if the intermediary data structure is a <em>commutative</em> Monoid under the reduce operation.</p>
 </blockquote>
-<p>In the following section we will implement a parallel MapReduce in Haskell in try to validate our theory with property based testing.</p>
+<p>In the following section we will implement a parallel MapReduce in Haskell in order to validate our theory with property based testing.</p>
 <h2 id="parallel-mapreduce-in-haskell">Parallel MapReduce in Haskell</h2>
 <p>We can define a parallel MapReduce implementation as follows (for more details see <a href="http://book.realworldhaskell.org/read/concurrent-and-multicore-programming.html">Real World Haskell, Chapter 24</a>):</p>
 <div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
@@ -265,7 +265,7 @@
 <p>parMap is defined as follows:</p>
 <div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a><span class="ot">parMap ::</span> <span class="dt">Strategy</span> b <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> [b]</span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true"></a>parMap strat f <span class="ot">=</span> (<span class="ot">`using`</span> parList strat) <span class="op">.</span> <span class="fu">map</span> f</span></code></pre></div>
-<p>The <code>parMap</code> evaluation strategy will spark a parallel evaluation for each element of the <code>input</code> list. Nevertheless the actual sequence of elements will not be changed as internally the classical sequential <code>map</code> function is used which will not change the sequence of elements. So the reduce phase will never receive a changed sequence of elements from the map phase, even if <code>map</code>-computations for the individual list elements might be executed in random order!</p>
+<p>The <code>parMap</code> evaluation strategy will spark a parallel evaluation for each element of the <code>input</code> list. Nevertheless the actual order of elements will not be changed as internally the classical sequential <code>map</code> function is used which will not change the order of elements. So the reduce phase will never receive a changed order of elements from the map phase, even if <code>map</code>-computations for the individual list elements might be executed in random order!</p>
 <p><code>mapResult</code> will always be <code>["hello", "my ", "dear ", "folks"]</code>.</p>
 <p>Thus <code>reduceResult</code> will be:</p>
 <div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true"></a>reduceResult <span class="ot">=</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot;hello&quot;</span>, <span class="st">&quot;my &quot;</span>, <span class="st">&quot;dear &quot;</span>, <span class="st">&quot;folks&quot;</span>] <span class="ot">`using`</span> rpar</span></code></pre></div>
