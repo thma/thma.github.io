@@ -4,6 +4,7 @@ module Main where
 
 import qualified GHC.IO.Encoding as E
 import Hakyll
+import           Text.Pandoc.Options
 
 main :: IO ()
 main = do
@@ -35,7 +36,7 @@ main = do
     match "posts/*" $ do
       route $ setExtension "html"
       compile $
-        pandocCompiler
+        pandocMathCompiler
           >>= loadAndApplyTemplate "templates/post.html" postCtx
           >>= saveSnapshot "content"
           >>= loadAndApplyTemplate "templates/default.html" postCtx
@@ -111,3 +112,13 @@ myFeedConfiguration =
       feedAuthorEmail = "Thomas.Mahler@ista.com",
       feedRoot = "https://thma.github.io/"
     }
+
+pandocMathCompiler =
+    let mathExtensions = extensionsFromList [Ext_tex_math_dollars, Ext_tex_math_double_backslash,
+                          Ext_latex_macros]
+        defaultExtensions = writerExtensions defaultHakyllWriterOptions
+        writerOptions = defaultHakyllWriterOptions {
+                          writerExtensions = mathExtensions <> defaultExtensions,
+                          writerHTMLMathMethod = MathJax ""
+                        }
+    in pandocCompilerWith defaultHakyllReaderOptions writerOptions

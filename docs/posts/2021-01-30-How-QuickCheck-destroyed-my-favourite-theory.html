@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>lambda is not a four letter word - Proving me wrong — How QuickCheck destroyed my favourite theory</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- MATH JAX-->
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+</head>
+<body>
+
+<header>
+    <div class="heading">
+        <div class="logo">
+            <div style="float: left">
+                <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+            </div>
+            <div>
+                <a href="../">&nbsp;lambda is not a four letter word</a>
+            </div>
+        </div>
+        <nav>
+            <a href="../">home</a> <a href="../about.html">about</a>
+        </nav>
+    </div>
+</header>
+
+<main class="markdown-body" role="main">
+    <h1>Proving me wrong — How QuickCheck destroyed my favourite theory</h1>
+    <div class="info">
+    <em>Posted on January 30, 2021
+    
+        by Thomas Mahler
+    </em><br /><br />
+</div>
+
+<h2 id="introduction">Introduction</h2>
+<p>Quite a while back I wrote a larger article on the algebraic foundation of software patterns which also covered the <a href="https://thma.github.io/posts/2018-11-24-lambda-the-ultimate-pattern-factory.html#map-reduce">MapReduce algorithm</a>.</p>
+<p>During the research digged out a paper on <a href="https://pdfs.semanticscholar.org/0498/3a1c0d6343e21129aaffca2a1b3eec419523.pdf">algebraic properties of distributed big data analytics</a>, which explained that a MapReduce will always work correctly when the intermediate data structure resulting from the <code>map</code>-phase is a Monoid under the <code>reduce</code>-operation.</p>
+<p>For some reason, I was not convinced that this Monoid-condition was enough, because all the typical examples like word-frequency maps are even <strong>commutative</strong> Monoids under the respective reduce operation.</p>
+<p>So I came up with the following personal theory:</p>
+<blockquote>
+<p>Only if the intermediate data structure resulting from the <code>map</code>-phase is a <strong>commutative Monoid</strong> under the <code>reduce</code>-operation, then a parallel MapReduce will produce correct results.</p>
+</blockquote>
+<p>I tried to prove this property using the <a href="https://wiki.haskell.org/Introduction_to_QuickCheck2">QuickCheck test framework</a>.</p>
+<p>Interestingly QuickCheck was able to find counter examples! This finally convinced me that my theory was wrong, and after a little deeper thought, I could understand why.</p>
+<p>I was impressed with the power of QuickCheck, so I thought it would be a good idea to share this lesson in falsification.</p>
+<p>The code shown in this blog <a href="https://github.com/thma/CommutativeMonoid">is also available on GitHub</a></p>
+<h2 id="commutative-monoids">Commutative Monoids</h2>
+<p>In abstract algebra, a monoid is a <em>set</em> equipped with an <em>associative binary operation</em> and an <em>identity element</em>.</p>
+<p>The simplest example for a <em>commutative Monoid</em> are the natural numbers under addition with 0 as the identity (or neutral) element. We can use QuickCheck to verify that indeed the Monoid laws plus commutativity are maintained.</p>
+<p>If we want to use <code>GHC.Natural</code> type to represent natural numbers, we first have to make <code>Natural</code> instantiate the <code>Arbitrary</code> type class which is used by QuickCheck to automatically generate test data:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Test.QuickCheck</span> (<span class="dt">Arbitrary</span>, arbitrary, <span class="dt">NonNegative</span> (..))</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">GHC.Natural</span>     (<span class="dt">Natural</span>, naturalFromInteger)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Arbitrary</span> <span class="dt">Natural</span> <span class="kw">where</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>  arbitrary <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    <span class="dt">NonNegative</span> nonNegative <span class="ot">&lt;-</span> arbitrary</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true"></a>    <span class="fu">return</span> <span class="op">$</span> naturalFromInteger nonNegative</span></code></pre></div>
+<p>Now we can start to write our property based tests. For algebraic structures it is straightforward to come up with properties: we just write the required laws (associativity, 0 is identity element and commutativity) as properties.</p>
+<p>I am using Hspec as a wrapper around QuickCheck as it provides a very nice testing DSL which makes it easy to read the code and the output of the test suite:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Test.Hspec</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>spec <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>  describe <span class="st">&quot;The Monoid 'Natural Numbers under Addition'&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>    it <span class="st">&quot;is associative&quot;</span> <span class="op">$</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>      property <span class="op">$</span> \x y z <span class="ot">-&gt;</span> ((x <span class="op">+</span> y) <span class="op">+</span> z) <span class="ot">`shouldBe`</span> ((x <span class="op">+</span> (y <span class="op">+</span> z))<span class="ot"> ::</span> <span class="dt">Natural</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>      </span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>    it <span class="st">&quot;has 0 as left and right identity element&quot;</span> <span class="op">$</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a>      property <span class="op">$</span> \x <span class="ot">-&gt;</span> (x <span class="op">+</span> <span class="dv">0</span> <span class="ot">`shouldBe`</span> (<span class="ot">x ::</span> <span class="dt">Natural</span>)) <span class="op">.&amp;&amp;.</span> (<span class="dv">0</span> <span class="op">+</span> x <span class="ot">`shouldBe`</span> x)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a>      </span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>    it <span class="st">&quot;is commutative&quot;</span> <span class="op">$</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a>      property <span class="op">$</span> \x y <span class="ot">-&gt;</span> x <span class="op">+</span> y <span class="ot">`shouldBe`</span> (y <span class="op">+</span><span class="ot"> x ::</span> <span class="dt">Natural</span>)</span></code></pre></div>
+<p>The output of these tests will be as follows:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="ex">Monoid</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>  <span class="ex">The</span> Monoid <span class="st">'Natural Numbers under Addition'</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a>    <span class="ex">is</span> associative</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a>    <span class="ex">has</span> 0 as identity (or neutral) <span class="ex">element</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a>    <span class="ex">is</span> commutative</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span></code></pre></div>
+<p>So behind the scenes, QuickCheck has generated test data for 100 tests for each property under test. For all these data the test cases passed.</p>
+<p>This is definitely not a proof. But it gives us some confidence that our math text-books are correct when giving Natural Numbers under addition as an example for a commutative Monoid.</p>
+<p>OK, that was easy! Now let’s move to non-commutative Monoids.</p>
+<h2 id="non-commutative-monoids">Non-commutative Monoids</h2>
+<p>Strings (or any other Lists) under concatenation are a typical example. It’s easy to see that <code>"hello" ++ ("dear" ++ "people")</code> equals <code>"(hello" ++ "dear") ++ "people"</code>, but that <code>"hello" ++ "world"</code> differs from <code>"world" ++ "hello"</code>.</p>
+<p>Now let’s try to formalize these intuitions as QuickCheck property based tests again.</p>
+<p>First I’m introducing an alias for <code>(++)</code>, as it is defined on any list type, it would be required to have type signatures in all properties (as we had all those <code>:: Natural</code> signatures in the examples above). So I define an operation <code>(⊕)</code> which is only defined on <code>String</code> instances:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a>(⊕)<span class="ot"> ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>(⊕) a b <span class="ot">=</span> a <span class="op">++</span> b</span></code></pre></div>
+<p>Now we can extend our test suite with the following test cases:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a>  describe <span class="st">&quot;The Monoid 'Strings under concatenation'&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>    </span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>    it <span class="st">&quot;is associative&quot;</span> <span class="op">$</span> </span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>      property <span class="op">$</span> \x y z <span class="ot">-&gt;</span> ((x ⊕ y) ⊕ z) <span class="ot">`shouldBe`</span> (x ⊕ (y ⊕ z))</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>      </span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>    it <span class="st">&quot;has \&quot;\&quot; as left and right identity element&quot;</span> <span class="op">$</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a>      property <span class="op">$</span> \x <span class="ot">-&gt;</span> (x ⊕ <span class="st">&quot;&quot;</span> <span class="ot">`shouldBe`</span> x) <span class="op">.&amp;&amp;.</span> (<span class="st">&quot;&quot;</span> ⊕ x <span class="ot">`shouldBe`</span> x)</span></code></pre></div>
+<p>The output looks promising:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a>  <span class="ex">The</span> Monoid <span class="st">'Strings under concatenation'</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>    <span class="ex">is</span> associative</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>    <span class="ex">has</span> <span class="st">&quot;&quot;</span> as left and right identity element</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span></code></pre></div>
+<p>Now let’s try to test the non-commutativity:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a>    it <span class="st">&quot;is NOT commutative&quot;</span> <span class="op">$</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>      property <span class="op">$</span> \x y <span class="ot">-&gt;</span> x ⊕ y <span class="ot">`shouldNotBe`</span> y ⊕ x</span></code></pre></div>
+<p>But unfortunately the output tells us that this is not true:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a>    <span class="ex">is</span> NOT commutative FAILED [1]</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>  <span class="ex">1</span>) <span class="ex">Monoid</span>, The Monoid <span class="st">'Strings under concatenation'</span>, is NOT commutative</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>       <span class="ex">Falsifiable</span> (after 1 test)<span class="bu">:</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>         <span class="st">&quot;&quot;</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>         <span class="st">&quot;&quot;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a>       <span class="ex">not</span> expected: <span class="st">&quot;&quot;</span></span></code></pre></div>
+<p>We formulated the property in the wrong way. The <code>(⊕)</code> <em>may be commutative for some</em> edge cases, e.g. when one or both of the arguments are <code>""</code>. But it is not commutative <em>in general</em> – that is for all possible arguments.</p>
+<p>We could rephrase this property as <em>“There exists at least one pair of arguments <code>(x, y)</code> for which <code>(⊕)</code> is not commutative”</em>:</p>
+<p><span class="math display">\[\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ]\]</span></p>
+<p>QuickCheck does not come with a mechanism for <em>existential quantification</em>. But as is has <code>forAll</code>, that is <em>universal quantification</em>. So we can try to make use of the following equivalence:</p>
+<p><span class="math display">\[\exists (x,y) \left [  x \oplus y \neq y \oplus x \right ] 
+  \equiv 
+  \neg \forall (x,y) \left [ x \oplus y = y \oplus x \right ]\]</span></p>
+<p>Unfortunately we can not write this simply as <code>not forAll</code>, as <code>forAll</code> returns a <code>Property</code> but <code>not</code> expects a <code>Bool</code>. But as explained in <a href="https://stackoverflow.com/questions/42764847/is-there-a-there-exists-quantifier-in-quickcheck">this discussion on Stackoverflow</a> it is still posible to implement our own <code>exists</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="ot">exists ::</span> (<span class="dt">Show</span> a, <span class="dt">Arbitrary</span> a) <span class="ot">=&gt;</span> (a <span class="ot">-&gt;</span> <span class="dt">Bool</span>) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a>exists <span class="ot">=</span> forSome <span class="op">$</span> resize <span class="dv">1000</span> arbitrary</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a><span class="ot">forSome ::</span> (<span class="dt">Show</span> a, <span class="dt">Testable</span> prop) <span class="ot">=&gt;</span> <span class="dt">Gen</span> a <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> prop) <span class="ot">-&gt;</span> <span class="dt">Property</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a>forSome gen prop <span class="ot">=</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>  mapResult (\r <span class="ot">-&gt;</span> r {P.reason <span class="ot">=</span> <span class="st">&quot;No witness found.&quot;</span>, P.callbacks <span class="ot">=</span> []}) <span class="op">$</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>    once <span class="op">$</span> disjoin <span class="op">$</span> <span class="fu">replicate</span> <span class="dv">1000</span> <span class="op">$</span> forAll gen prop</span></code></pre></div>
+<p>Now we can rewrite the property “There exists at least one pair of arguments for which <code>(⊕)</code> is not commutative” as follows:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>    it <span class="st">&quot;is not commutative (via exists)&quot;</span> <span class="op">$</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a>      exists <span class="op">$</span> \(x,y) <span class="ot">-&gt;</span> x ⊕ y <span class="op">/=</span> y ⊕ x</span></code></pre></div>
+<p>The output now fits much better into our intuitive understanding:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a>    <span class="ex">is</span> not commutative (via exists)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>      <span class="ex">+++</span> OK, passed 1 test.</span></code></pre></div>
+<h2 id="sequential-mapreduce">Sequential MapReduce</h2>
+<blockquote>
+<p>MapReduce is a programming model and an associated implementation for processing and generating large data sets. Users specify <strong>a map function</strong> that processes a key/value pair to generate a set of intermediate key/value pairs, <strong>and a reduce function</strong> that merges all intermediate values associated with the same intermediate key.</p>
+<p>[This] abstraction is inspired by the map and reduce primitives present in Lisp and many other functional languages. <a href="https://storage.googleapis.com/pub-tools-public-publication-data/pdf/16cb30b4b92fd4989b8619a61752a2387c6dd474.pdf">Quoted from Google Research</a></p>
+</blockquote>
+<p>I’m not going into more details here, as You’ll find detailed information on this approach and a working example <a href="https://thma.github.io/posts/2018-11-24-lambda-the-ultimate-pattern-factory.html#map-reduce">in my original article</a>.</p>
+<p>Here is the definition of a sequential MapReduce:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a>simpleMapReduce </span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true"></a>simpleMapReduce mapFunc reduceFunc <span class="ot">=</span> reduceFunc <span class="op">.</span> <span class="fu">map</span> mapFunc</span></code></pre></div>
+<p>We can test the sequential MapReduce algorithm with the following property based test:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a>    it <span class="st">&quot;works correctly with a sequential map-reduce&quot;</span> <span class="op">$</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a>      property <span class="op">$</span> \a b c d <span class="ot">-&gt;</span> (simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [a,b,c,d]) </span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>                     <span class="ot">`shouldBe`</span> (<span class="fu">reverse</span> a) ⊕ (<span class="fu">reverse</span> b) ⊕ (<span class="fu">reverse</span> c) ⊕ (<span class="fu">reverse</span> d)</span></code></pre></div>
+<h2 id="parallel-mapreduce">Parallel MapReduce</h2>
+<p>Now we come to the tricky part that kicked off this whole discussion: parallelism.</p>
+<p>As an example we consider a simple sequential MapReduce, taking an input list of <code>Int</code>s, computing their squares and computing the sum of these squares:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce (<span class="op">^</span><span class="dv">2</span>) (<span class="fu">foldr</span> (<span class="op">+</span>) <span class="dv">0</span>) [<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>]</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true"></a><span class="dv">30</span></span></code></pre></div>
+<p>Let’s try to design this as a massively parallelized algorithm:</p>
+<ol type="1">
+<li><p>Mapping of <code>(^2)</code> over the input-list <code>[1,2,3,4]</code> would be started in parallel to the reduction of the intermediary list of squares by <code>(foldr (+) 0)</code>.</p></li>
+<li><p>The mapping phase will be executed as a set of parallel computations (one for each element of the input list).</p></li>
+<li><p>The reduction phase will also be executed as a set of parallel computations (one for each addition).</p></li>
+</ol>
+<p>Of course the reduction phase can begin only when at least one list element is squared. So in effect the mapping process would have to start first. The parallel computation of squares will result in a non-deterministic sequence of computations. In particular it is not guaranteed that all elements of the input list are processed in the original list order. So it might for example happen that <code>3</code> is squared first. Now the reduction phase would receive it’s first input <code>9</code>, and would start reduction, that is compute <code>9 + 0</code>.</p>
+<p>Let’s assume the following random sequence of mapping steps: Next the first element of the input <code>1</code>, then the fourth <code>4</code> and finally the second element <code>2</code> would be squared, resulting in a reduction sequence of <code>4 + 16 + 1 + 9 + 0</code>. As this sums up to <code>30</code> everything is fine. Addition is commutative, so changing the sequence of reduction steps does not affect the overall result.</p>
+<p>But now imagine we would parallelize:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a><span class="st">&quot;hello my dear folks &quot;</span></span></code></pre></div>
+<p>If we assume the same sequence as above, the third element of the input list would be reversed first, resulting in a first reduction step <code>"dear " ⊕ ""</code>. Next the first, the fourth and finally the second element would be reversed, resulting in a reduction sequence of <code>"my " ⊕ "folks " ⊕ "hello " ⊕ "dear " ⊕ "" = "my folks hello dear "</code>. As string concatenation is not commutative it does not really come as a surprise that random changes to the reduction sequence will eventually result in wrong computations.</p>
+<p>So our conclusion is:</p>
+<blockquote>
+<p>If the MapReduce algorithm is parallelized in the way that I outlined above — which may result in random changes of the sequence of list elements in the reduction phase — it will only work correct if the intermediary data structure is a commutative monoid under the reduce operation.</p>
+</blockquote>
+<p>In the following section we will implement a parallel MapReduce in Haskell in try to validate our theory with property based testing.</p>
+<h2 id="parallel-mapreduce-in-haskell">Parallel MapReduce in Haskell</h2>
+<p>We can define a parallel MapReduce implementation as follows (for more details see <a href="http://book.realworldhaskell.org/read/concurrent-and-multicore-programming.html">Real World Haskell, Chapter 24</a>):</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true"></a>parMapReduce </span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span></code></pre></div>
+<p>This implementation will start computing <code>mapResult</code> and <code>reduceResult</code> in parallel and finally return <code>reduceResult</code>. The <code>mapResult</code> is computed with a parallelized <code>map</code> function <code>parMap</code>. The <code>reduceResult</code> is computed by applying a parallel reduction strategy <code>rpar</code>.</p>
+<p>Next we will write a property based test to valdate our theory:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a>text <span class="ot">=</span> [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>    it <span class="st">&quot;has some cases where parallel reduction deviates from sequential reduction&quot;</span> <span class="op">$</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true"></a>      exists <span class="op">$</span> \() <span class="ot">-&gt;</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true"></a>                <span class="op">/=</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span></code></pre></div>
+<p>But it turns out that QuickCheck does not find any evidence for this assumption:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a>    <span class="ex">has</span> some cases where parallel reduction deviates from sequential reduction FAILED [1]</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true"></a><span class="ex">Failures</span>:</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true"></a></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true"></a>  <span class="bu">test</span>\MonoidSpec.hs:69:5: </span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true"></a>  <span class="ex">1</span>) <span class="ex">Monoid</span>, The Monoid <span class="st">'Strings under concatenation'</span>, has some cases where parallel reduction deviates from sequential reduction</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true"></a>       <span class="ex">***</span> Failed! No witness found. (after 1 test)<span class="bu">:</span></span></code></pre></div>
+<p>After seeing this result I had to deal with some growing cognitive dissonance, much like <a href="https://www.youtube.com/watch?v=EBtx1MDi5tY">a flat earther confronted with experimental evidence…</a></p>
+<p>I began verifying my setup. I made sure that the <code>package.yaml</code> contains the right GHC options to provide parallel execution of the test suite:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a><span class="at">    </span><span class="fu">ghc-options</span><span class="kw">:</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -O2</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -threaded</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -rtsopts</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -eventlog</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -with-rtsopts=-N</span></span></code></pre></div>
+<p>I also made sure that all cores of my CPU were actually running at 100% utilization during the parallel tests.</p>
+<p>I also inspected the runtime behaviour with the amazing <a href="https://wiki.haskell.org/ThreadScope">ThreadScope tool</a> (A ThreadScope eventlog can be produced by adding the runtime flags <code>+RTS -ls -N</code> when executing an application).</p>
+<p>I also increased the number of test executions to give better chances to hit any rare cases.</p>
+<p>But to no avail.</p>
+<p>Since QuickCheck kept telling me, “You’re wrong,” I finally started to admit, “Well, maybe I am <em>indeed</em> wrong and should take a closer look at the problem.”</p>
+<h2 id="rethinking-parallel-evaluation-in-haskell">Rethinking parallel evaluation in Haskell</h2>
+<p>Taking a closer look at the definition of the parallel MapReduce will allow us to better understand what’s actually going on:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true"></a>parMapReduce </span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true"></a></span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true"></a><span class="co">-- and now an actual example usage:</span></span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true"></a>x <span class="ot">=</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]     </span></code></pre></div>
+<p>In this concrete example <code>mapResult</code> will be:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a>mapResult    <span class="ot">=</span> parMap rpar <span class="fu">reverse</span> [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span></code></pre></div>
+<p>parMap is defined as follows:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a><span class="ot">parMap ::</span> <span class="dt">Strategy</span> b <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> [b]</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true"></a>parMap strat f <span class="ot">=</span> (<span class="ot">`using`</span> parList strat) <span class="op">.</span> <span class="fu">map</span> f</span></code></pre></div>
+<p>The <code>parMap</code> evaluation strategy will spark a parallel evaluation for each element of the <code>input</code> list. Nevertheless the actual sequence of elements will not be changed as internally the classical sequential <code>map</code> function is used which will not change the sequence of elements. So the reduce phase will never receive a changed sequence of elements from the map phase, even if <code>map</code>-computations for the individual list elements might be executed in random order!</p>
+<p><code>mapResult</code> will always be <code>["hello", "my ", "dear ", "folks"]</code>.</p>
+<p>Thus <code>reduceResult</code> will be:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true"></a>reduceResult <span class="ot">=</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot;hello&quot;</span>, <span class="st">&quot;my &quot;</span>, <span class="st">&quot;dear &quot;</span>, <span class="st">&quot;folks&quot;</span>] <span class="ot">`using`</span> rpar</span></code></pre></div>
+<p>Again the traditional semantics of <code>foldr</code> is maintained — in particular the order of arguments of all <code>(⊕)</code> operations, only we allow for parallel evaluation of those <code>(⊕)</code> operations during the reduction phase.</p>
+<p>So the final output will always be <code>"hello my dear folks"</code>. The parallelism introduced by the <code>Control.Parallel</code> package does not in any way change the semantics of pure functional programs as our example. This is exactly what the failed test cased kept telling me:</p>
+<blockquote>
+<p>There do not exist any cases where sequential and parallel MapReduce result in deviating results!</p>
+</blockquote>
+<p>We can again evaluate our improved theory with a QuickCheck test:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a>    it <span class="st">&quot;parallel reduction always equals sequential reduction&quot;</span> <span class="op">$</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true"></a>      property <span class="op">$</span> \l <span class="ot">-&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true"></a>                     <span class="ot">`shouldBe`</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span></code></pre></div>
+<p>And — not so surprisingly — this test succeeds!</p>
+<p>If you want to know more about parallel evaluation in Haskell I highly recommend the exellent <a href="https://www.oreilly.com/library/view/parallel-and-concurrent/9781449335939/ch02.html">Parallel and Concurrent Programming in Haskell by Simon Marlow</a>.</p>
+<h2 id="conclusions">Conclusions</h2>
+<ol type="1">
+<li><p>The parallelism as provided by the Haskell <code>Control.Parallel</code> package maintains the semantics of pure functional code and thus a parallel MapReduce maintains the same properties as its sequential counterpart. So a parallel MapReduce will still work correctly if the intermediate data structure resulting from the <code>map</code>-phase is just a <strong>Monoid</strong> — not necessarily a <em>commutative</em> Monoid.</p></li>
+<li><p>Nevertheless there may be implementations that do not strictly maintain the original order of the input data during the <code>map</code>- and <code>reduce</code>-phases. With such implementations the intermediate data structure resulting from the <code>map</code>-phase must be a <strong>commutative Monoid</strong> under the <code>reduce</code>-operation to produce correct results.</p></li>
+<li><p>Property based testing with QuickCheck is a powerful tool to verify assumptions about a given code-base. I really like using it as intended by <a href="https://en.wikipedia.org/wiki/Falsifiability">Karl Poppers Theory of Falsifiability</a>:</p>
+<ul>
+<li>Derive hypotheses from your theory which can be experimentally tested.</li>
+<li>Perform experiments (property based tests) that test your hypotheses</li>
+<li>If the experimental results contradict the hypotheses, the theory must be false.</li>
+</ul></li>
+</ol>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a> | 
+    Source code is available at 
+    <a href="https://github.com/thma/thma.github.io">GitHub</a>
+</footer>
+
+</body>
+</html>
