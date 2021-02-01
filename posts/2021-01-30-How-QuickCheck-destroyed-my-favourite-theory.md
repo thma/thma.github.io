@@ -313,10 +313,8 @@ The `reduceResult` is computed by applying a parallel reduction strategy `rpar`.
 Next we will write a property based test to valdate our theory:
 
 ```haskell
-text = [" olleh"," ym"," raed"," sklof"]
-
     it "has some cases where parallel reduction deviates from sequential reduction" $
-      exists $ \() -> parMapReduce reverse (foldr (⊕) "") text
+      exists $ \text -> parMapReduce reverse (foldr (⊕) "") text
                 /= simpleMapReduce reverse (foldr (⊕) "") text
 ```
 
