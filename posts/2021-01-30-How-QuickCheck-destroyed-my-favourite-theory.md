@@ -233,6 +233,21 @@ We can test the sequential MapReduce algorithm with the following property based
                      `shouldBe` (reverse a) ⊕ (reverse b) ⊕ (reverse c) ⊕ (reverse d)
 ```
 
+### Excurs: foldMap
+
+What I have shown so far just demonstrates the general mechanism of chaining `map` and `reduce` functions without implying any parallel execution.
+Essentially we are chaining a `map` with a `fold` (i.e. reduction) function. 
+In the Haskell base library there is a higher order function `foldMap` that covers exactly this pattern of chaining. 
+Please note that `foldMap`does only a single traversal of the foldable data structure. 
+It fuses the `map` and `reduce` phase into a single one by function composition of `mappend` and the mapping function `f`:
+
+```haskell
+-- | Map each element of the structure to a monoid,
+-- and combine the results.
+foldMap :: (Foldable t, Monoid m) => (a -> m) -> t a -> m
+foldMap f = foldr (mappend . f) mempty
+```
+
 ## Parallel MapReduce
 
 Now we come to the tricky part that kicked off this whole discussion: parallelism.

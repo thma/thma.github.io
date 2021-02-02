@@ -179,11 +179,17 @@
 <div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a>    it <span class="st">&quot;works correctly with a sequential map-reduce&quot;</span> <span class="op">$</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a>      property <span class="op">$</span> \a b c d <span class="ot">-&gt;</span> (simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [a,b,c,d]) </span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>                     <span class="ot">`shouldBe`</span> (<span class="fu">reverse</span> a) ⊕ (<span class="fu">reverse</span> b) ⊕ (<span class="fu">reverse</span> c) ⊕ (<span class="fu">reverse</span> d)</span></code></pre></div>
+<h3 id="excurs-foldmap">Excurs: foldMap</h3>
+<p>What I have shown so far just demonstrates the general mechanism of chaining <code>map</code> and <code>reduce</code> functions without implying any parallel execution. Essentially we are chaining a <code>map</code> with a <code>fold</code> (i.e. reduction) function. In the Haskell base library there is a higher order function <code>foldMap</code> that covers exactly this pattern of chaining. Please note that <code>foldMap</code>does only a single traversal of the foldable data structure. It fuses the <code>map</code> and <code>reduce</code> phase into a single one by function composition of <code>mappend</code> and the mapping function <code>f</code>:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a><span class="co">-- | Map each element of the structure to a monoid,</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true"></a><span class="co">-- and combine the results.</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true"></a><span class="fu">foldMap</span><span class="ot"> ::</span> (<span class="dt">Foldable</span> t, <span class="dt">Monoid</span> m) <span class="ot">=&gt;</span> (a <span class="ot">-&gt;</span> m) <span class="ot">-&gt;</span> t a <span class="ot">-&gt;</span> m</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true"></a><span class="fu">foldMap</span> f <span class="ot">=</span> <span class="fu">foldr</span> (<span class="fu">mappend</span> <span class="op">.</span> f) <span class="fu">mempty</span></span></code></pre></div>
 <h2 id="parallel-mapreduce">Parallel MapReduce</h2>
 <p>Now we come to the tricky part that kicked off this whole discussion: parallelism.</p>
 <p>As an example we consider a simple sequential MapReduce, taking an input list of <code>Int</code>s, computing their squares and computing the sum of these squares:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce (<span class="op">^</span><span class="dv">2</span>) (<span class="fu">foldr</span> (<span class="op">+</span>) <span class="dv">0</span>) [<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>]</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true"></a><span class="dv">30</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce (<span class="op">^</span><span class="dv">2</span>) (<span class="fu">foldr</span> (<span class="op">+</span>) <span class="dv">0</span>) [<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>,<span class="dv">4</span>]</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a><span class="dv">30</span></span></code></pre></div>
 <p>Let’s try to design this as a massively parallelized algorithm:</p>
 <ol type="1">
 <li><p>Mapping of <code>(^2)</code> over the input-list <code>[1,2,3,4]</code> would be started in parallel to the reduction of the intermediary list of squares by <code>(foldr (+) 0)</code>.</p></li>
@@ -193,8 +199,8 @@
 <p>Of course the reduction phase can begin only when at least one list element is squared. So in effect the mapping process would have to start first. The parallel computation of squares will result in a non-deterministic sequence of computations. In particular it is not guaranteed that all elements of the input list are processed in the original list order. So it might for example happen that <code>3</code> is squared first. Now the reduction phase would receive it’s first input <code>9</code>, and would start reduction, that is compute <code>9 + 0</code>.</p>
 <p>Let’s assume the following random sequence of mapping steps: Next the first element of the input <code>1</code>, then the fourth <code>4</code> and finally the second element <code>2</code> would be squared, resulting in a reduction sequence of <code>4 + 16 + 1 + 9 + 0</code>. As this sums up to <code>30</code> everything is fine. Addition is commutative, so changing the sequence of reduction steps does not affect the overall result.</p>
 <p>But now imagine we would parallelize:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a><span class="st">&quot;hello my dear folks &quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a>λ<span class="op">&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a><span class="st">&quot;hello my dear folks &quot;</span></span></code></pre></div>
 <p>If we assume the same sequence as above, the third element of the input list would be reversed first, resulting in a first reduction step <code>"dear " ⊕ ""</code>. Next the first, the fourth and finally the second element would be reversed, resulting in a reduction sequence of <code>"my " ⊕ "folks " ⊕ "hello " ⊕ "dear " ⊕ "" = "my folks hello dear "</code>. As string concatenation is not commutative it does not really come as a surprise that random changes to the reduction sequence will eventually result in wrong computations.</p>
 <p>So our conclusion is:</p>
 <blockquote>
@@ -203,39 +209,39 @@
 <p>In the following section we will implement a parallel MapReduce in Haskell in order to validate our theory with property based testing.</p>
 <h2 id="parallel-mapreduce-in-haskell">Parallel MapReduce in Haskell</h2>
 <p>We can define a parallel MapReduce implementation as follows (for more details see <a href="http://book.realworldhaskell.org/read/concurrent-and-multicore-programming.html">Real World Haskell, Chapter 24</a>):</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true"></a></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true"></a>parMapReduce </span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true"></a>parMapReduce </span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span></code></pre></div>
 <p>This implementation will start computing <code>mapResult</code> and <code>reduceResult</code> in parallel and finally return <code>reduceResult</code>. The <code>mapResult</code> is computed with a parallelized <code>map</code> function <code>parMap</code>. The <code>reduceResult</code> is computed by applying a parallel reduction strategy <code>rpar</code>.</p>
 <p>Next we will write a property based test to valdate our theory:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a>    it <span class="st">&quot;has some cases where parallel reduction deviates from sequential reduction&quot;</span> <span class="op">$</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a>      exists <span class="op">$</span> \text <span class="ot">-&gt;</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>                <span class="op">/=</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span></code></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a>    it <span class="st">&quot;has some cases where parallel reduction deviates from sequential reduction&quot;</span> <span class="op">$</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true"></a>      exists <span class="op">$</span> \text <span class="ot">-&gt;</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true"></a>                <span class="op">/=</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span></code></pre></div>
 <p>But it turns out that QuickCheck does not find any evidence for this assumption:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a>    <span class="ex">has</span> some cases where parallel reduction deviates from sequential reduction FAILED [1]</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true"></a></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true"></a><span class="ex">Failures</span>:</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true"></a></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true"></a>  <span class="bu">test</span>\MonoidSpec.hs:69:5: </span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true"></a>  <span class="ex">1</span>) <span class="ex">Monoid</span>, The Monoid <span class="st">'Strings under concatenation'</span>, has some cases where parallel reduction deviates from sequential reduction</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true"></a>       <span class="ex">***</span> Failed! No witness found. (after 1 test)<span class="bu">:</span></span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a>    <span class="ex">has</span> some cases where parallel reduction deviates from sequential reduction FAILED [1]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true"></a><span class="ex">Failures</span>:</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true"></a></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true"></a>  <span class="bu">test</span>\MonoidSpec.hs:69:5: </span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true"></a>  <span class="ex">1</span>) <span class="ex">Monoid</span>, The Monoid <span class="st">'Strings under concatenation'</span>, has some cases where parallel reduction deviates from sequential reduction</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true"></a>       <span class="ex">***</span> Failed! No witness found. (after 1 test)<span class="bu">:</span></span></code></pre></div>
 <p>After seeing this result I had to deal with some growing cognitive dissonance, much like <a href="https://www.youtube.com/watch?v=EBtx1MDi5tY">a flat earther confronted with experimental evidence…</a></p>
 <p>I began verifying my setup. I made sure that the <code>package.yaml</code> contains the right GHC options to provide parallel execution of the test suite:</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a><span class="at">    </span><span class="fu">ghc-options</span><span class="kw">:</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -O2</span></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -threaded</span></span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -rtsopts</span></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -eventlog</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -with-rtsopts=-N</span></span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true"></a><span class="at">    </span><span class="fu">ghc-options</span><span class="kw">:</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -O2</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -threaded</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -rtsopts</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -eventlog</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true"></a><span class="at">    </span><span class="kw">-</span><span class="at"> -with-rtsopts=-N</span></span></code></pre></div>
 <p>I also made sure that all cores of my CPU were actually running at 100% utilization during the parallel tests.</p>
 <p>I also inspected the runtime behaviour with the amazing <a href="https://wiki.haskell.org/ThreadScope">ThreadScope tool</a> (A ThreadScope eventlog can be produced by adding the runtime flags <code>+RTS -ls -N</code> when executing an application).</p>
 <p>I also increased the number of test executions to give better chances to hit any rare cases.</p>
@@ -243,39 +249,39 @@
 <p>Since QuickCheck kept telling me, “You’re wrong,” I finally started to admit, “Well, maybe I am <em>indeed</em> wrong and should take a closer look at the problem.”</p>
 <h2 id="rethinking-parallel-evaluation-in-haskell">Rethinking parallel evaluation in Haskell</h2>
 <p>Taking a closer look at the definition of the parallel MapReduce will allow us to better understand what’s actually going on:</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true"></a></span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true"></a>parMapReduce </span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
-<span id="cb20-7"><a href="#cb20-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
-<span id="cb20-8"><a href="#cb20-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
-<span id="cb20-9"><a href="#cb20-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
-<span id="cb20-10"><a href="#cb20-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
-<span id="cb20-11"><a href="#cb20-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
-<span id="cb20-12"><a href="#cb20-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span>
-<span id="cb20-13"><a href="#cb20-13" aria-hidden="true"></a></span>
-<span id="cb20-14"><a href="#cb20-14" aria-hidden="true"></a><span class="co">-- and now an actual example usage:</span></span>
-<span id="cb20-15"><a href="#cb20-15" aria-hidden="true"></a>x <span class="ot">=</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]     </span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel</span> (par)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Control.Parallel.Strategies</span> (using, parMap, rpar)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true"></a></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true"></a>parMapReduce </span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true"></a><span class="ot">  ::</span> (a <span class="ot">-&gt;</span> b)   <span class="co">-- map function</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true"></a>  <span class="ot">-&gt;</span> ([b] <span class="ot">-&gt;</span> c) <span class="co">-- reduce function</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true"></a>  <span class="ot">-&gt;</span> [a]        <span class="co">-- list to map over</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true"></a>  <span class="ot">-&gt;</span> c          <span class="co">-- result</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true"></a>parMapReduce mapFunc reduceFunc input <span class="ot">=</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true"></a>    mapResult <span class="ot">`par`</span> reduceResult</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true"></a>    <span class="kw">where</span> mapResult    <span class="ot">=</span> parMap rpar mapFunc input</span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true"></a></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true"></a><span class="co">-- and now an actual example usage:</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true"></a>x <span class="ot">=</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]     </span></code></pre></div>
 <p>In this concrete example <code>mapResult</code> will be:</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a>mapResult    <span class="ot">=</span> parMap rpar <span class="fu">reverse</span> [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a>mapResult    <span class="ot">=</span> parMap rpar <span class="fu">reverse</span> [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span></code></pre></div>
 <p>parMap is defined as follows:</p>
-<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a><span class="ot">parMap ::</span> <span class="dt">Strategy</span> b <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> [b]</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true"></a>parMap strat f <span class="ot">=</span> (<span class="ot">`using`</span> parList strat) <span class="op">.</span> <span class="fu">map</span> f</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true"></a><span class="ot">parMap ::</span> <span class="dt">Strategy</span> b <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> [b]</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true"></a>parMap strat f <span class="ot">=</span> (<span class="ot">`using`</span> parList strat) <span class="op">.</span> <span class="fu">map</span> f</span></code></pre></div>
 <p>The <code>parMap</code> evaluation strategy will spark a parallel evaluation for each element of the <code>input</code> list. Nevertheless the actual order of elements will not be changed as internally the classical sequential <code>map</code> function is used which will not change the order of elements. So the reduce phase will never receive a changed order of elements from the map phase, even if <code>map</code>-computations for the individual list elements might be executed in random order!</p>
 <p><code>mapResult</code> will always be <code>["hello", "my ", "dear ", "folks"]</code>.</p>
 <p>Thus <code>reduceResult</code> will be:</p>
-<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true"></a>reduceResult <span class="ot">=</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot;hello&quot;</span>, <span class="st">&quot;my &quot;</span>, <span class="st">&quot;dear &quot;</span>, <span class="st">&quot;folks&quot;</span>] <span class="ot">`using`</span> rpar</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a>reduceResult <span class="ot">=</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) [<span class="st">&quot;hello&quot;</span>, <span class="st">&quot;my &quot;</span>, <span class="st">&quot;dear &quot;</span>, <span class="st">&quot;folks&quot;</span>] <span class="ot">`using`</span> rpar</span></code></pre></div>
 <p>Again the traditional semantics of <code>foldr</code> is maintained — in particular the order of arguments of all <code>(⊕)</code> operations, only we allow for parallel evaluation of those <code>(⊕)</code> operations during the reduction phase.</p>
 <p>So the final output will always be <code>"hello my dear folks"</code>. The parallelism introduced by the <code>Control.Parallel</code> package does not in any way change the semantics of pure functional programs as our example. This is exactly what the failed test cased kept telling me:</p>
 <blockquote>
 <p>There do not exist any cases where sequential and parallel MapReduce result in deviating results!</p>
 </blockquote>
 <p>We can again evaluate our improved theory with a QuickCheck test:</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a>    it <span class="st">&quot;parallel reduction always equals sequential reduction&quot;</span> <span class="op">$</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true"></a>      property <span class="op">$</span> \l <span class="ot">-&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true"></a>                     <span class="ot">`shouldBe`</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true"></a>    it <span class="st">&quot;parallel reduction always equals sequential reduction&quot;</span> <span class="op">$</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true"></a>      property <span class="op">$</span> \l <span class="ot">-&gt;</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true"></a>                     <span class="ot">`shouldBe`</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) l</span></code></pre></div>
 <p>And — not so surprisingly — this test succeeds!</p>
 <p>If you want to know more about parallel evaluation in Haskell I highly recommend the exellent <a href="https://www.oreilly.com/library/view/parallel-and-concurrent/9781449335939/ch02.html">Parallel and Concurrent Programming in Haskell by Simon Marlow</a>.</p>
 <h2 id="conclusions">Conclusions</h2>
