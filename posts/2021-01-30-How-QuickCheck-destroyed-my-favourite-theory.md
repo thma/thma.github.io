@@ -1,5 +1,5 @@
 ---
-title: Proving me wrong — How QuickCheck destroyed my favourite theory
+title: Fuzzing me wrong — How QuickCheck destroyed my favourite theory
 author: Thomas Mahler
 tags: haskell, QuickCheck, property-based-testing, Karl Popper, falsification
 ---
@@ -22,10 +22,10 @@ So I came up with the following personal theory:
 > Only if the intermediate data structure resulting from the `map`-phase is a **commutative Monoid** 
 > under the `reduce`-operation, then a parallel MapReduce will produce correct results.
 
-I tried to prove this property using the 
+I tried to validate this property using the 
 [QuickCheck test framework](https://wiki.haskell.org/Introduction_to_QuickCheck2).
 
-Interestingly QuickCheck was able to find counter examples!
+Interestingly the QuickCheck tests failed!
 This finally convinced me that my theory was wrong, and after a little deeper thought, I could understand why.
 
 I was impressed with the power of QuickCheck, so I thought it would be a good idea to share this lesson in falsification.

@@ -10,7 +10,7 @@
     </author>
     <updated>2021-01-30T00:00:00Z</updated>
     <entry>
-    <title>Proving me wrong — How QuickCheck destroyed my favourite theory</title>
+    <title>Fuzzing me wrong — How QuickCheck destroyed my favourite theory</title>
     <link href="https://thma.github.io//posts/2021-01-30-How-QuickCheck-destroyed-my-favourite-theory.html" />
     <id>https://thma.github.io//posts/2021-01-30-How-QuickCheck-destroyed-my-favourite-theory.html</id>
     <published>2021-01-30T00:00:00Z</published>
@@ -30,8 +30,8 @@
 <blockquote>
 <p>Only if the intermediate data structure resulting from the <code>map</code>-phase is a <strong>commutative Monoid</strong> under the <code>reduce</code>-operation, then a parallel MapReduce will produce correct results.</p>
 </blockquote>
-<p>I tried to prove this property using the <a href="https://wiki.haskell.org/Introduction_to_QuickCheck2">QuickCheck test framework</a>.</p>
-<p>Interestingly QuickCheck was able to find counter examples! This finally convinced me that my theory was wrong, and after a little deeper thought, I could understand why.</p>
+<p>I tried to validate this property using the <a href="https://wiki.haskell.org/Introduction_to_QuickCheck2">QuickCheck test framework</a>.</p>
+<p>Interestingly the QuickCheck tests failed! This finally convinced me that my theory was wrong, and after a little deeper thought, I could understand why.</p>
 <p>I was impressed with the power of QuickCheck, so I thought it would be a good idea to share this lesson in falsification.</p>
 <p>The code shown in this blog <a href="https://github.com/thma/CommutativeMonoid">is also available on GitHub</a></p>
 <h2 id="commutative-monoids">Commutative Monoids</h2>
@@ -179,11 +179,9 @@
 <span id="cb16-12"><a href="#cb16-12" aria-hidden="true"></a>          reduceResult <span class="ot">=</span> reduceFunc mapResult <span class="ot">`using`</span> rpar</span></code></pre></div>
 <p>This implementation will start computing <code>mapResult</code> and <code>reduceResult</code> in parallel and finally return <code>reduceResult</code>. The <code>mapResult</code> is computed with a parallelized <code>map</code> function <code>parMap</code>. The <code>reduceResult</code> is computed by applying a parallel reduction strategy <code>rpar</code>.</p>
 <p>Next we will write a property based test to valdate our theory:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a>text <span class="ot">=</span> [<span class="st">&quot; olleh&quot;</span>,<span class="st">&quot; ym&quot;</span>,<span class="st">&quot; raed&quot;</span>,<span class="st">&quot; sklof&quot;</span>]</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>    it <span class="st">&quot;has some cases where parallel reduction deviates from sequential reduction&quot;</span> <span class="op">$</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true"></a>      exists <span class="op">$</span> \() <span class="ot">-&gt;</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true"></a>                <span class="op">/=</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a>    it <span class="st">&quot;has some cases where parallel reduction deviates from sequential reduction&quot;</span> <span class="op">$</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a>      exists <span class="op">$</span> \text <span class="ot">-&gt;</span> parMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>                <span class="op">/=</span> simpleMapReduce <span class="fu">reverse</span> (<span class="fu">foldr</span> (⊕) <span class="st">&quot;&quot;</span>) text</span></code></pre></div>
 <p>But it turns out that QuickCheck does not find any evidence for this assumption:</p>
 <div class="sourceCode" id="cb18"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a>    <span class="ex">has</span> some cases where parallel reduction deviates from sequential reduction FAILED [1]</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true"></a></span>
