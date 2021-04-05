@@ -1,5 +1,5 @@
 ---
-title: Proving me wrong — How QuickCheck destroyed my favourite theory
+title: Fuzzing me wrong — How QuickCheck destroyed my favourite theory
 author: Thomas Mahler
 tags: haskell, QuickCheck, property-based-testing, Karl Popper, falsification
 ---
@@ -22,10 +22,10 @@ So I came up with the following personal theory:
 > Only if the intermediate data structure resulting from the `map`-phase is a **commutative Monoid** 
 > under the `reduce`-operation, then a parallel MapReduce will produce correct results.
 
-I tried to prove this property using the 
+I tried to validate this property using the 
 [QuickCheck test framework](https://wiki.haskell.org/Introduction_to_QuickCheck2).
 
-Interestingly QuickCheck was able to find counter examples!
+Interestingly the QuickCheck tests failed!
 This finally convinced me that my theory was wrong, and after a little deeper thought, I could understand why.
 
 I was impressed with the power of QuickCheck, so I thought it would be a good idea to share this lesson in falsification.
@@ -233,6 +233,21 @@ We can test the sequential MapReduce algorithm with the following property based
                      `shouldBe` (reverse a) ⊕ (reverse b) ⊕ (reverse c) ⊕ (reverse d)
 ```
 
+### Excurs: foldMap
+
+What I have shown so far just demonstrates the general mechanism of chaining `map` and `reduce` functions without implying any parallel execution.
+Essentially we are chaining a `map` with a `fold` (i.e. reduction) function. 
+In the Haskell base library there is a higher order function `foldMap` that covers exactly this pattern of chaining. 
+Please note that `foldMap`does only a single traversal of the foldable data structure. 
+It fuses the `map` and `reduce` phase into a single one by function composition of `mappend` and the mapping function `f`:
+
+```haskell
+-- | Map each element of the structure to a monoid,
+-- and combine the results.
+foldMap :: (Foldable t, Monoid m) => (a -> m) -> t a -> m
+foldMap f = foldr (mappend . f) mempty
+```
+
 ## Parallel MapReduce
 
 Now we come to the tricky part that kicked off this whole discussion: parallelism.
@@ -313,10 +328,8 @@ The `reduceResult` is computed by applying a parallel reduction strategy `rpar`.
 Next we will write a property based test to valdate our theory:
 
 ```haskell
-text = [" olleh"," ym"," raed"," sklof"]
-
     it "has some cases where parallel reduction deviates from sequential reduction" $
-      exists $ \() -> parMapReduce reverse (foldr (⊕) "") text
+      exists $ \text -> parMapReduce reverse (foldr (⊕) "") text
                 /= simpleMapReduce reverse (foldr (⊕) "") text
 ```
 
