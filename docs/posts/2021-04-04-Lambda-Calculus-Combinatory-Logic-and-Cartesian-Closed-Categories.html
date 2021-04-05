@@ -62,13 +62,13 @@
 
 <h2 id="introduction">Introduction</h2>
 <p>Recently I read the very interesting <a href="http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf">Compiling to Categories</a> paper by Conal Elliot.</p>
-<p>He presents the idea to compile haskell programs into a expressions of catesian closed categories by λ-elimination.</p>
-<p>The process applied reminded me a lot of the <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">bracket abstraction</a> used when compiling λ-terms to SKI-Combinators.</p>
+<p>He presents the idea to compile haskell programs into expressions of cartesian closed categories by λ-elimination. These expressions can then be used for different purposes like alternative program evaluation, graphic representation of program graphs, designing hardware layouts for algorithms, etc.</p>
+<p>The λ-elimination process applied reminded me a lot of the <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">bracket abstraction</a> used when compiling λ-terms to SKI-Combinators.</p>
 <p>In the following I’m having a closer look at the parallels between compiling lambda to CCC and compiling lambda to SKI-combinators</p>
 <h2 id="lambda-calculus">Lambda Calculus</h2>
 <p>I assume at least a rough familiarity with the λ-calculus. If you need a refresher I recommend <a href="http://dev.stephendiehl.com/fun/003_lambda_calculus.html">the chapter on λ-calculus in Stephen Diels excellent Write You a Haskell</a>.</p>
-<p>Instead of the classical notation of lambda terms I’ll use the the Haskell notation throughout this post. So instead of writing <code>λx.x a</code> I’ll write <code>\x -&gt; x a</code>.</p>
-<h2 id="bracket-abraction-in-combinatory-logic">bracket abraction in combinatory logic</h2>
+<p>Instead of the classical notation of lambda terms I’ll use the equivalent Haskell notation throughout this post. So instead of writing <code>λx.x a</code> I’ll write <code>\x -&gt; x a</code>.</p>
+<h2 id="bracket-abstraction-in-combinatory-logic">Bracket Abstraction in Combinatory Logic</h2>
 <blockquote>
 <p>The SKI combinator calculus is a combinatory logic, a computational system that may be perceived as a reduced version of the untyped lambda calculus. It can be thought of as a computer programming language […] because it is an extremely simple Turing complete language. It was introduced by Moses Schönfinkel and Haskell Curry.</p>
 <p>Quoted from <a href="https://en.wikipedia.org/wiki/SKI_combinator_calculus">Wikipedia</a></p>

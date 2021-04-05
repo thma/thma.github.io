@@ -8,9 +8,12 @@ tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, 
 
 Recently I read the very interesting [Compiling to Categories](http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf) paper by Conal Elliot.
 
-He presents the idea to compile haskell programs into a expressions of  catesian closed categories by λ-elimination.
+He presents the idea to compile haskell programs into expressions of cartesian closed categories by λ-elimination. 
+These expressions can then be used for different purposes like alternative program evaluation, graphic representation 
+of program graphs, designing hardware layouts for algorithms, etc.
 
-The process applied reminded me a lot of the [bracket abstraction](https://crypto.stanford.edu/~blynn/lambda/sk.html) used when compiling λ-terms to SKI-Combinators.
+The λ-elimination process applied reminded me a lot of the 
+[bracket abstraction](https://crypto.stanford.edu/~blynn/lambda/sk.html) used when compiling λ-terms to SKI-Combinators.
 
 In the following I'm having a closer look at the parallels between compiling lambda to CCC and compiling lambda to SKI-combinators
 
@@ -19,9 +22,10 @@ In the following I'm having a closer look at the parallels between compiling lam
 I assume at least a rough familiarity with the λ-calculus. 
 If you need a refresher I recommend [the chapter on λ-calculus in Stephen Diels excellent Write You a Haskell](http://dev.stephendiehl.com/fun/003_lambda_calculus.html).
 
-Instead of the classical notation of lambda terms I'll use the the Haskell notation throughout this post. So instead of writing `λx.x a` I'll write `\x -> x a`.
+Instead of the classical notation of lambda terms I'll use the equivalent Haskell notation throughout this post. 
+So instead of writing `λx.x a` I'll write `\x -> x a`.
 
-## bracket abraction in combinatory logic
+## Bracket Abstraction in Combinatory Logic
 
 > The SKI combinator calculus is a combinatory logic, a computational system that may be perceived as a reduced version of the untyped lambda calculus. 
 > It can be thought of as a computer programming language [...] because it is an extremely simple Turing complete language. 
