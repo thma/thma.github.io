@@ -7,8 +7,92 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sat, 30 Jan 2021 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Sun, 04 Apr 2021 00:00:00 UT</lastBuildDate>
         <item>
+    <title>λ-Calculus, Combinatory Logic and Cartesian Closed Categories</title>
+    <link>https://thma.github.io//posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html</link>
+    <description><![CDATA[<div class="info">
+    <em>Posted on April  4, 2021
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<h2 id="introduction">Introduction</h2>
+<p>Recently I read the very interesting <a href="http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf">Compiling to Categories</a> paper by Conal Elliot.</p>
+<p>He presents the idea to compile haskell programs into a expressions of catesian closed categories by λ-elimination.</p>
+<p>The process applied reminded me a lot of the <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">bracket abstraction</a> used when compiling λ-terms to SKI-Combinators.</p>
+<p>In the following I’m having a closer look at the parallels between compiling lambda to CCC and compiling lambda to SKI-combinators</p>
+<h2 id="lambda-calculus">Lambda Calculus</h2>
+<p>I assume at least a rough familiarity with the λ-calculus. If you need a refresher I recommend <a href="http://dev.stephendiehl.com/fun/003_lambda_calculus.html">the chapter on λ-calculus in Stephen Diels excellent Write You a Haskell</a>.</p>
+<p>Instead of the classical notation of lambda terms I’ll use the the Haskell notation throughout this post. So instead of writing <code>λx.x a</code> I’ll write <code>\x -&gt; x a</code>.</p>
+<h2 id="bracket-abraction-in-combinatory-logic">bracket abraction in combinatory logic</h2>
+<blockquote>
+<p>The SKI combinator calculus is a combinatory logic, a computational system that may be perceived as a reduced version of the untyped lambda calculus. It can be thought of as a computer programming language […] because it is an extremely simple Turing complete language. It was introduced by Moses Schönfinkel and Haskell Curry.</p>
+<p>Quoted from <a href="https://en.wikipedia.org/wiki/SKI_combinator_calculus">Wikipedia</a></p>
+</blockquote>
+<p>λ-terms can be converted to variable free SKI combinator terms with a process called <a href="https://en.wikipedia.org/wiki/Combinatory_logic#Completeness_of_the_S-K_basis">bracket abstraction</a>. Bracket abstraction <code>absCL</code> is defined by the following equations (given in pseudo Haskell notation, as pattern matching on functions is not possible in Haskell):</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a>absCL (\x <span class="ot">-&gt;</span> x)   <span class="ot">=</span> i</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>absCL (\x <span class="ot">-&gt;</span> y)   <span class="ot">=</span> k y</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>absCL (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> s (\x <span class="ot">-&gt;</span> p) (\x <span class="ot">-&gt;</span> q)</span></code></pre></div>
+<p>where the combinators <code>i</code>, <code>k</code> and <code>s</code> are defined as follows (these are valid haskell definitions):</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">i ::</span> a <span class="ot">-&gt;</span> a</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>i x <span class="ot">=</span> x</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a><span class="ot">k ::</span> a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> a</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>k x y <span class="ot">=</span> x</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a><span class="ot">s ::</span> (a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> c</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>s p q x <span class="ot">=</span> p x (q x)  </span></code></pre></div>
+<p>Please note that <code>i</code> is identical to <code>id</code> and <code>k</code> is identical to <code>const</code> from the Haskell Prelude.</p>
+<p>Once the λ-terms are compiled to combinator terms, these terms can be interpreted quite efficiently as they don’t contain any variables and so no environment-handling is needed.</p>
+<p>Combinator terms also allow to apply several more advanced interpretation techniques like graph-reduction, node-sharing, parallel reduction, etc.</p>
+<p>For a very cool demo have a look at the <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">web assembly based graph reduction engine by Ben Lynn</a>.</p>
+<h2 id="cartesian-closed-categories-ccc">Cartesian Closed Categories (CCC)</h2>
+<p>In his famous paper <a href="http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf">Compiling to Categories</a> Conal Elliot describes a way to compile from simply typed lambda-calculus terms to cartesian closed categories(CCC).</p>
+<p>At the core of his approach sits a transformation from lambda-terms to CCC expressions that are done by eliminating variables by an abstraction function <code>absCCC</code> (again in pseudo-Haskell):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a>absCCC (\x <span class="ot">-&gt;</span> x)   <span class="ot">=</span> <span class="fu">id</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>absCCC (\x <span class="ot">-&gt;</span> y)   <span class="ot">=</span> <span class="fu">const</span> y</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a>absCCC (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> apply <span class="op">.</span> ((\x <span class="ot">-&gt;</span> p) △ (\x <span class="ot">-&gt;</span> q))</span></code></pre></div>
+<p>Where <code>(△)</code> is introduced by the <code>Cartesian</code> category:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">class</span> <span class="dt">Category</span> k <span class="ot">=&gt;</span> <span class="dt">Cartesian</span> k <span class="kw">where</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>  (△)<span class="ot"> ::</span> (a <span class="ot">`k`</span> c) <span class="ot">-&gt;</span> (a <span class="ot">`k`</span> d) <span class="ot">-&gt;</span> (a <span class="ot">`k`</span> (c, d))</span></code></pre></div>
+<p>In the <code>(-&gt;)</code> instance of <code>Cartesian</code> <code>(△)</code> is defined as:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a>(△)<span class="ot">::</span> (t <span class="ot">-&gt;</span> a) <span class="ot">-&gt;</span> (t <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> t <span class="ot">-&gt;</span> (a, b)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>(f △ g) x <span class="ot">=</span> (f x, g x)</span></code></pre></div>
+<p>And where <code>apply</code> is introduced by the <code>Closed</code> category:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="kw">class</span> <span class="dt">Cartesian</span> k <span class="ot">=&gt;</span> <span class="dt">Closed</span> k <span class="kw">where</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a><span class="ot">  apply ::</span> ((a <span class="ot">-&gt;</span> b), a) <span class="ot">`k`</span> b</span></code></pre></div>
+<p>In the <code>(-&gt;)</code> instance of <code>Closed</code> <code>apply</code> is defined as</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="ot">apply ::</span> (a <span class="ot">-&gt;</span> b, a) <span class="ot">-&gt;</span> b</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>apply (f, x) <span class="ot">=</span> f x</span></code></pre></div>
+<p>The function <code>absCCC</code> looks surprisingly similar to the <code>absCL</code> function defined above. The first two pattern matches are obviously equivalent as <code>i</code> and <code>id</code> are identical as well as <code>k y</code> and <code>const y</code>.</p>
+<p>But what about the third clause? We have:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- on the one hand: abstracting lambda-terms to combinator expresssions:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a>absCL (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> s (\x <span class="ot">-&gt;</span> p) (\x <span class="ot">-&gt;</span> q)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a><span class="co">-- and on the other: abstracting lambda-terms to CCC expressions:</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>absCCC (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> apply <span class="op">.</span> ((\x <span class="ot">-&gt;</span> p) △ (\x <span class="ot">-&gt;</span> q))</span></code></pre></div>
+<p>Are these two definitions equal?</p>
+<p>By eliminating all variables from the term <code>apply . ((\x -&gt; p) △ (\x -&gt; q))</code> we can write it as a combinator <code>s'</code> with variables <code>p, q, x</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a>s&#39; p q x <span class="ot">=</span> (apply <span class="op">.</span> (p △ q)) x</span></code></pre></div>
+<p>Now we can apply equational reasoning:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>s&#39; p q x <span class="ot">=</span> (apply <span class="op">.</span> (p △ q)) x   </span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a>         <span class="ot">=</span> apply ((p △ q) x)     <span class="co">-- by definition of (.)</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a>         <span class="ot">=</span> apply (p x, q x)      <span class="co">-- by definition of (△)</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a>         <span class="ot">=</span> (p x) (q x)           <span class="co">-- by definition of apply        </span></span></code></pre></div>
+<p>This equals the definition of the <code>s</code> combinator:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a>s p q x <span class="ot">=</span> (p x) (q x)</span></code></pre></div>
+<p>So we can conclude that the transformations from λ-calculus to SKI-combinators and CCC are equivalent.</p>
+<p>For me this was a new insight. But it seems that I was not the first to discover this: P.-L. Curien presents a much more elaborate proof of this correspondence in his classic paper <a href="https://core.ac.uk/download/pdf/82017242.pdf">Categorical Combinators</a>. See also <a href="http://pauillac.inria.fr/~huet/PUBLIC/cat.pdf">Cartesian Closed Categories and Lambda-Calculus</a>.</p>
+<h2 id="nexts-steps">Nexts steps</h2>
+<p>In my next blog post I will have a closer look at a CCC based execution model for a subset of Haskell.</p>
+]]></description>
+    <pubDate>Sun, 04 Apr 2021 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html</guid>
+    <dc:creator>Thomas Mahler</dc:creator>
+</item>
+<item>
     <title>Proving me wrong — How QuickCheck destroyed my favourite theory</title>
     <link>https://thma.github.io//posts/2021-01-30-How-QuickCheck-destroyed-my-favourite-theory.html</link>
     <description><![CDATA[<div class="info">
