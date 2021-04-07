@@ -32,7 +32,7 @@ True
 And in quite the same way as the sentence on love it does not help.
 It's not wrong in the orthographical sense, but it does not help to get any deeper insights into λ-calculus or functional programming.
 
-Since it is apparently impossible to say anything meaningful about λ in such short statements, there is probably no way around approaching this phenomenon in somewhat longer texts. Hence this Blog!
+So, since it is obviously quite difficult to fully grasp a complex phenomenon in short definitions - be it love or λ, there is probably no way around approaching the subject in somewhat longer texts in ever new paraphrases. Hence this blog!
 
 As my late professor said:
 
