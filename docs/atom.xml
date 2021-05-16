@@ -359,13 +359,15 @@
 <p>Some weeks ago I gave an introductory talk on functional programming at an in-house mini-conference where I tried to explain basic concepts of functional programming to a crowd of developers with their backgrounds mostly in imperative and OO languages.</p>
 <p>Initially I had planned to present the contents of my <a href="https://thma.github.io/posts/2020-04-01-why-haskell-matters.html">Why Haskell Matters article</a> but that turned out impractical because of the time constraints of my talk.</p>
 <p>So I prepared a condensed slide deck focussing on the more elementary sections, which worked quite well.</p>
-<p>Recently I stumbled across <a href="https://github.com/gibiansky/IHaskell">IHaskell</a>, a Haskell kernel for the Jupyter Notebook platform. As I like the interactive approach of Jupyter notebooks I transferred my presentation into the Jupyter notebook format.</p>
+<p>Recently I stumbled across <a href="https://github.com/gibiansky/IHaskell">IHaskell</a>, a Haskell kernel for the Jupyter Notebook platform. As I like the interactive approach of Jupyter notebooks quite a lot I transferred my presentation into the Jupyter notebook format.</p>
 <p>As I’m quite happy with the result I’d like to make it available to a wider audience. I have prepared three different versions:</p>
 <ol type="1">
-<li><p><a href="https://raw.githubusercontent.com/thma/IHaskellExperiments/main/WhatsAwesomeAboutFunctionalProgramming.ipynb">The raw notebook</a>. You can open it in your local Jupyter + IHaskell setup <a href="https://github.com/gibiansky/IHaskell#installation">(Please follow this installation guide)</a> to enjoy the full interactivity that Jupyter notebooks provide.</p></li>
 <li><p>The notebook as rendered by <a href="https://nbviewer.jupyter.org/github/thma/IHaskellExperiments/blob/main/WhatsAwesomeAboutFunctionalProgramming.ipynb">nbviewer.jupyter.org</a>. Unfortunately it’s not interactive. But you won’t need a local Jupyter installation.</p></li>
 <li><p>A <a href="/static/WhatsAwesomeAboutFunctionalProgramming.slides.html">reveal.js presentation</a> which I generated from the notebook. This version just needs a web-browser.</p></li>
+<li><p>An Interactive version of the reveal.js slides hosted on Binder: <a href="https://mybinder.org/v2/gh/thma/IHaskellExperiments/HEAD?filepath=ihaskell_examples/WhatsAwesomeAboutFunctionalProgramming.ipynb"><img src="https://mybinder.org/badge_logo.svg" alt="Binder" /></a> (Press ALT-r to start the presentation.) This version uses <a href="https://rise.readthedocs.io/en/stable/">RISE</a> to allow interactive notebook cells while still being in presentation mode. This version is based on a <a href="https://github.com/thma/IHaskellExperiments/blob/main/Dockerfile">Dockerfile</a> that adds the RISE extension to an <a href="https://hub.docker.com/r/crosscompass/ihaskell-notebook">ihaskell-notebook</a> docker image. This Dockerfile is then built and served by <a href="https://mybinder.org/">Binder</a>.</p></li>
 </ol>
+<p>If you intend to use IHaskell notebooks locally <a href="https://github.com/gibiansky/IHaskell#installation">Please follow this installation guide</a>.</p>
+<p>Sourcecode of my IHaskell notebook and the dockerfile are hosted in <a href="https://github.com/thma/IHaskellExperiments">this github repo</a>.</p>
 ]]></summary>
 </entry>
 <entry>
