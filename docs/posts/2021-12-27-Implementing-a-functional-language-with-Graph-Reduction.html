@@ -63,9 +63,12 @@
 <p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a></p>
 <h2 id="abstract">Abstract</h2>
 <p>Implementing a small functional language with a classic combinator based graph-reduction machine in Haskell.</p>
-<p>I took a λ-calculus parser from <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">A Combinatory Compiler</a> and extended it to cover a tiny functional language based on the untyped λ-calculus.</p>
-<p>I’m then applying compilation from λ-calculus to combinatory logic combinators (S,K,I,B,C and Y) by bracket-abstraction and some optimization rules.</p>
-<p>These combinator terms are then allocated into a graph data-structure. Which is then reduced by applying combinator graph-reduction. The destructive inplace reduction of the graph is made possible by using <code>STRef</code> mutable references.</p>
+<p>The implementation is structured into three parts:</p>
+<ol type="1">
+<li><p>A λ-calculus parser from <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">A Combinatory Compiler</a> which was extended to cover a tiny functional language based on the untyped λ-calculus.</p></li>
+<li><p>A compiler from λ-calculus to combinatory logic combinators (S,K,I,B,C and Y) which is based on bracket-abstraction and some optimization rules.</p></li>
+<li><p>A graph-reducer. Combinator terms are allocated into a graph data-structure. Which is then reduced by applying combinator graph-reduction. The destructive inplace reduction of the graph is made possible by using <code>STRef</code> mutable references.</p></li>
+</ol>
 <h2 id="introduction">Introduction</h2>
 <p>In my <a href="https://thma.github.io/posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html">last blog post</a> I presented two ways of transforming λ-terms into variable free representations: - bracket abstraction to combinatory logic terms (SKI) and - bracket abstraction to terms of closed cartesian categories (CCC).</p>
 <p>I demonstrated that both representations are equivalent as they imply the same reduction rules.</p>
