@@ -25,3 +25,4 @@ _cache/
 stack.yaml.lock
 .idea/
 *.iml
+tasks.json
