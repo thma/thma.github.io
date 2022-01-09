@@ -22,7 +22,7 @@
 </p>
 <h2 id="abstract">Abstract</h2>
 <p>In this blog post I’m presenting an implementation of a Wiki System in the spirit of the legendary <a href="http://wiki.c2.com/">C2-Wiki</a> - written in Haskell with the <a href="https://www.yesodweb.com/">Yesod</a> framework.</p>
-<p>There will also be some nice add-ons like a graphical reprentation of the page links.</p>
+<p>There will also be some nice add-ons like a graphical representation of the page links.</p>
 <h2 id="introduction">Introduction</h2>
 <blockquote>
 <p>The WikiWikiWeb is the first wiki, or user-editable website. It was launched on 25 March 1995 by its inventor, programmer Ward Cunningham, to accompany the Portland Pattern Repository website discussing software design patterns.</p>

@@ -11,7 +11,7 @@ tags: haskell, markdown, graphviz, wiki, regex, yesod, wikiwiki, milligram-css
 In this blog post I'm presenting an implementation of a Wiki System 
 in the spirit of the legendary [C2-Wiki](http://wiki.c2.com/) - written in Haskell with the [Yesod](https://www.yesodweb.com/) framework.
 
-There will also be some nice add-ons like a graphical reprentation of the page links.
+There will also be some nice add-ons like a graphical representation of the page links.
 
 ## Introduction 
 
