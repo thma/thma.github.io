@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>lambda is not a four letter word - Evaluating SKI combinators as native Haskell functions</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- MATH JAX-->
+    <script type="text/javascript" src="../static/mathjax/tex-mml-chtml.js"></script>
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+</head>
+<body>
+
+<header>
+    <div class="heading">
+        <div class="logo">
+            <div style="float: left">
+                <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+            </div>
+            <div>
+                <a href="../">&nbsp;lambda is not a four letter word</a>
+            </div>
+        </div>
+        <nav>
+            <a href="../">home</a> <a href="../about.html">about</a>
+        </nav>
+    </div>
+</header>
+
+<main class="markdown-body" role="main">
+    <h1>Evaluating SKI combinators as native Haskell functions</h1>
+    <div class="info">
+    <em>Posted on February  5, 2022
+    
+        by Thomas Mahler
+    </em><br /><br />
+</div>
+
+<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
+<h2 id="abstract">abstract</h2>
+<p>In this post I present an alternative approach to combinator-based implementation of functional languages that is significantly faster than classical graph-reduction based solutions.</p>
+<h2 id="introduction">Introduction</h2>
+<p>In a <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">previous post</a> I presented a classical approach to implement a functional language with combinator based graph-reduction in Haskell.</p>
+<p>The implementation was structured into three parts:</p>
+<ol type="1">
+<li><p>A parser for a tiny functional language based on the untyped λ-calculus.</p></li>
+<li><p>A small compiler from λ-calculus to a fixed set of combinatory logic combinators (S,K,I,B,C and Y (aka. SICKBY)).</p></li>
+<li><p>A graph-reduction engine which implements the combinator rewrite rules as an efficient graph reduction</p></li>
+</ol>
+<p>The basic idea is as follows:</p>
+<p>Take a program like <code>main = (\x y -&gt; x) 3 4</code> and compile it to a variable-free combinator expressions, in this case <code>K 3 4</code>. Then apply the combinator reduction rules like <code>K x y = x</code> until normal-form is reached.</p>
+<p>Graph-reduction is used as an efficient implementation technique for these reduction rules. For example the reduction of <code>K</code> is implemented as follows:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ot">reduce ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">LeftAncestorsStack</span> s <span class="ot">-&gt;</span> <span class="dt">ST</span> s ()</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="co">-- K x y = x</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>reduce <span class="dt">K</span> (p1 <span class="op">:</span> p2 <span class="op">:</span> _) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>  (_K <span class="op">:@:</span> xP) <span class="ot">&lt;-</span> readSTRef p1</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>  xVal <span class="ot">&lt;-</span> readSTRef xP</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>  writeSTRef p2 xVal</span></code></pre></div>
+<p>This code transforms the graph by directly writing the value <code>xVal</code>, stored in <code>xP</code> into the root node <code>p2</code>, as depicted below:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a>p2<span class="op">:</span>    <span class="op">@</span>   <span class="op">==&gt;</span>  <span class="dv">3</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>      <span class="op">/</span> \</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>p1<span class="op">:</span>  <span class="op">@</span>   <span class="dv">4</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>    <span class="op">/</span> \</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>   <span class="dt">K</span>   <span class="dv">3</span></span></code></pre></div>
+<h2 id="gaining-a-new-perspective">Gaining a new perspective</h2>
+<p>The SICKBY combinators can be defined as ordinary Haskell functions:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a>i x      <span class="ot">=</span> x         <span class="co">-- i = id</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>k x y    <span class="ot">=</span> x         <span class="co">-- k = const</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a>s f g x  <span class="ot">=</span> f x (g x)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a>c f g x  <span class="ot">=</span> ((f x) g)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a>b f g x  <span class="ot">=</span> (f (g x))</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>y        <span class="ot">=</span> fix</span></code></pre></div>
+<p>So why don’t we just use the Haskell native implementations of these combinators to reduce our expressions <code>implicitely</code>, rather than building our own graph reduction to <code>explicitly</code> reduce them?</p>
+<p>It turns out that Matthew Naylor already wrote about this idea more than a decade ago in <a href="https://wiki.haskell.org/wikiupload/0/0a/TMR-Issue10.pdf">The Monad Reader, issue 10</a> (see also this <a href="https://smunix.github.io/kseo.github.io/posts/2016-12-30-write-you-an-interpreter.html">more recent coverage of the idea</a>).</p>
+<p>In the following section I will walk you through the details of this concept.</p>
+<h2 id="translating-sickby-expressions">Translating SICKBY expressions</h2>
+<p>In order to make use of haskell functions as combinators we’ll first need a data structure that allows to include native functions in addition to the actual terms:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">LambdaToSKI</span> (<span class="dt">Combinator</span> (..), fromString)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="co">-- | a compiled expression may be:</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">CExpr</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a>  <span class="ot">=</span> <span class="dt">CComb</span> <span class="dt">Combinator</span>       <span class="co">-- a known combinator symbol</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a>  <span class="op">|</span> <span class="dt">CApp</span> <span class="dt">CExpr</span> <span class="dt">CExpr</span>       <span class="co">-- an application (f x)</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>  <span class="op">|</span> <span class="dt">CFun</span> (<span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span>)  <span class="co">-- a native haskell function of type (CExpr -&gt; CExpr)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>  <span class="op">|</span> <span class="dt">CInt</span> <span class="dt">Integer</span>           <span class="co">-- an integer</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a><span class="co">-- | declaring a show instance for CExpr</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">CExpr</span> <span class="kw">where</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">CComb</span> k)  <span class="ot">=</span> <span class="fu">show</span> k</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">CApp</span> a b) <span class="ot">=</span> <span class="st">&quot;(&quot;</span> <span class="op">++</span> <span class="fu">show</span> a <span class="op">++</span> <span class="st">&quot; &quot;</span> <span class="op">++</span> <span class="fu">show</span> b <span class="op">++</span> <span class="st">&quot;)&quot;</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">CFun</span> _f)  <span class="ot">=</span> <span class="st">&quot;&lt;function&gt;&quot;</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">CInt</span> i)   <span class="ot">=</span> <span class="fu">show</span> i</span></code></pre></div>
+<p>Translation from SICKBY terms (that is abstracted lambda expresssions) to <code>CExpr</code> is straightforward:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="co">-- | translating an abstracted lambda expression into a compiled expression</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a><span class="ot">translate ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>translate (fun <span class="op">:@</span> arg)   <span class="ot">=</span> <span class="dt">CApp</span> (translate fun) (translate arg)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>translate (<span class="dt">Int</span> k)        <span class="ot">=</span> <span class="dt">CInt</span> k</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>translate (<span class="dt">Var</span> c)        <span class="ot">=</span> <span class="dt">CComb</span> (fromString c)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>translate lam<span class="op">@</span>(<span class="dt">Lam</span> _ _)  <span class="ot">=</span> <span class="fu">error</span> <span class="op">$</span> <span class="st">&quot;lambdas should already be abstracted: &quot;</span> <span class="op">++</span> <span class="fu">show</span> lam</span></code></pre></div>
+<ol type="1">
+<li>Applications are translated by forming a <code>CApp</code> of the translated function and it’s argument.</li>
+<li>Integers are kept as is, just wrapped with a <code>CInt</code> constructor</li>
+<li>After performing bracket abstraction any remaining <code>Var</code> must be a combinator. They are thus translated into a fixed combinator symbol; <code>fromString</code> looks up combinator symbols.</li>
+<li>After bracket abstraction any remaining <code>Lam</code> expressions would be an error, so we treat it as such.</li>
+</ol>
+<p>Please note that we do not use the <code>CFun</code> constructor in the translate stage. So right now the result of <code>translate</code> is just an ordinary data structure. Let’s see an example:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a>ghci<span class="op">&gt;</span> testSource <span class="ot">=</span> <span class="st">&quot;main = (\\x y -&gt; x) 3 4&quot;</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>ghci<span class="op">&gt;</span> env <span class="ot">=</span> parseEnvironment testSource</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>ghci<span class="op">&gt;</span> compile env babs0</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>(((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;k&quot;</span>)) <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;i&quot;</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">3</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">4</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>ghci<span class="op">&gt;</span> cexpr <span class="ot">=</span> translate expr</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a>ghci<span class="op">&gt;</span> cexpr</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true"></a>((((<span class="dt">S</span> (<span class="dt">K</span> <span class="dt">K</span>)) <span class="dt">I</span>) <span class="dv">3</span>) <span class="dv">4</span>)</span></code></pre></div>
+<p>Now it’s time to do the real work. We will have to perform two essential transformations: 1. All combinators of the form <code>(CComb comb)</code> have to be replaced by the haskell functions implementing the combinator reduction rule. 2. All applications <code>(CApp fun arg)</code> have to be replaced by actual function application. In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that are wrapped by a <code>CFun</code> constructor. For this particular case we define an application operator <code>(!)</code> as follows:</p>
+<pre><code>```haskell
+-- | apply a CExpr of shape (CFun f) to argument x by evaluating (f x)
+infixl 0 !
+(!) :: CExpr -&gt; CExpr -&gt; CExpr
+(CFun f) ! x = f x
+```</code></pre>
+<p>Both tasks are performed by the following <code>link</code> function:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | a global environment of combinator definitions</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">GlobalEnv</span> <span class="ot">=</span> [(<span class="dt">Combinator</span>,<span class="dt">CExpr</span>)]</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a><span class="co">-- | &quot;link&quot; a compiled expression into Haskell native functions.</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a><span class="co">--   application terms will be transformed into (!) applications</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a><span class="co">--   combinator symbols will be replaced by their actual function definition</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a><span class="ot">link ::</span> <span class="dt">GlobalEnv</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a>link globals (<span class="dt">CApp</span> fun arg) <span class="ot">=</span> link globals fun <span class="op">!</span> link globals arg</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a>link globals (<span class="dt">CComb</span> comb)   <span class="ot">=</span> fromJust <span class="op">$</span> <span class="fu">lookup</span> comb globals</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a>link _globals expr          <span class="ot">=</span> expr</span></code></pre></div>
+<p>The global set of combinators is defined as follows:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="ot">primitives ::</span> <span class="dt">GlobalEnv</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a>primitives <span class="ot">=</span> <span class="kw">let</span> (<span class="op">--&gt;</span>) <span class="ot">=</span> (,) <span class="kw">in</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a>  [ <span class="dt">I</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> <span class="fu">id</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a>  , <span class="dt">K</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> (<span class="dt">CFun</span> <span class="op">.</span> <span class="fu">const</span>)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a>  , <span class="dt">S</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> (\f <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \g <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \x <span class="ot">-&gt;</span> f<span class="op">!</span>x<span class="op">!</span>(g<span class="op">!</span>x))</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>  , <span class="dt">B</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> (\f <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \g <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \x <span class="ot">-&gt;</span> f<span class="op">!</span>(g<span class="op">!</span>x))</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>  , <span class="dt">C</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> (\f <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \g <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \x <span class="ot">-&gt;</span> f<span class="op">!</span>x<span class="op">!</span>g)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a>  , <span class="dt">IF</span>     <span class="op">--&gt;</span> <span class="dt">CFun</span> (\(<span class="dt">CInt</span> cond) <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \thenExp <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \elseExp <span class="ot">-&gt;</span> </span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true"></a>                                        <span class="kw">if</span> cond <span class="op">==</span> <span class="dv">1</span> <span class="kw">then</span> thenExp <span class="kw">else</span> elseExp)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true"></a>  , <span class="dt">Y</span>      <span class="op">--&gt;</span> <span class="dt">CFun</span> (\(<span class="dt">CFun</span> f) <span class="ot">-&gt;</span> fix f)</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true"></a>  , <span class="dt">ADD</span>    <span class="op">--&gt;</span> arith (<span class="op">+</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true"></a>  , <span class="dt">SUB</span>    <span class="op">--&gt;</span> arith (<span class="op">-</span>)</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true"></a>  , <span class="dt">SUB1</span>   <span class="op">--&gt;</span> <span class="dt">CFun</span> sub1</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true"></a>  , <span class="dt">MUL</span>    <span class="op">--&gt;</span> arith (<span class="op">*</span>)</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true"></a>  , <span class="dt">EQL</span>    <span class="op">--&gt;</span> arith eql</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true"></a>  , <span class="dt">GEQ</span>    <span class="op">--&gt;</span> arith geq</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true"></a>  , <span class="dt">ZEROP</span>  <span class="op">--&gt;</span> <span class="dt">CFun</span> isZero</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true"></a>  ]</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true"></a></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true"></a><span class="ot">arith ::</span> (<span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>) <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true"></a>arith op <span class="ot">=</span> <span class="dt">CFun</span> <span class="op">$</span> \(<span class="dt">CInt</span> a) <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \(<span class="dt">CInt</span> b) <span class="ot">-&gt;</span> <span class="dt">CInt</span> (op a b)</span></code></pre></div>
+<p>As you can see, the combinators are implemented as <code>CFun</code> wrapped functions. So they bear some minor overhead for pattern matching the <code>CFun</code> constructor when using the <code>(!)</code> operator. But apart from that they are ordinary Haskell functions.</p>
+<p>Trying out <code>link</code> in GHCi looks like follows:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>ghci<span class="op">&gt;</span> link primitives cexpr</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a><span class="dv">3</span></span></code></pre></div>
+<p>So our initial expression <code>main = (\\x y -&gt; x) 3 4</code> got translated into a haskell function applied to it’s two arguments. As the function is fully saturated, the ghci implicit <code>show</code> request triggers its evaluation and we see the correct result <code>3</code> returned.</p>
+<h2 id="we-can-do-still-better">We can do still better</h2>
+<p>I took the idea of having two passes, <code>translate</code> and <code>link</code> to transform the input SICKBY expressions verbatim from Matthew Naylor’s paper. I think it’s easier to explain the overall idea when breaking it down into these two separate steps. But it’s perfectly possible do the transformation in one pass:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="co">-- | translate and link in one go</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a><span class="co">--   application terms will directly be transformed into (!) applications</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a><span class="co">--   combinator symbols will be replaced by their actual function definition</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a><span class="ot">transLink ::</span> <span class="dt">GlobalEnv</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>transLink globals (fun <span class="op">:@</span> arg)  <span class="ot">=</span> transLink globals fun <span class="op">!</span> transLink globals arg</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>transLink _globals (<span class="dt">Int</span> k)      <span class="ot">=</span> <span class="dt">CInt</span> k</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true"></a>transLink globals (<span class="dt">Var</span> c)       <span class="ot">=</span> fromJust <span class="op">$</span> <span class="fu">lookup</span> (fromString c) globals</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true"></a>transLink _globals l<span class="op">@</span>(<span class="dt">Lam</span> _ _)  <span class="ot">=</span> <span class="fu">error</span> <span class="op">$</span> <span class="st">&quot;lambdas should be abstracted already &quot;</span> <span class="op">++</span> <span class="fu">show</span> l</span></code></pre></div>
+<p>In this case the <code>CExpr</code> type becomes even simpler, as no intermediate constructors are required for applications and combinators:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="co">-- | a compiled expression</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">CExpr</span> <span class="ot">=</span> </span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true"></a>    <span class="dt">CFun</span> (<span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true"></a>  <span class="op">|</span> <span class="dt">CInt</span> <span class="dt">Integer</span></span></code></pre></div>
+<h2 id="the-good-new-and-the-good-news">The good new and the good news</h2>
+<p>If you studied <a href="(https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html)">my post on the roll your own graph-reduction idea</a> you will be amazed how much simpler the current approach is.</p>
+<p>But it is also tremendously faster!</p>
+<p>I’ve assembled a set of <a href="https://github.com/thma/lambda-ski/blob/main/benchmark/ReductionBenchmarks.hs">criterion micro-benchmarks for some typical recursive functions</a> on integers.</p>
+<p>The table below compares the mean execution times for reducing the same program with GraphReduction and with the “combinators as native functions”. the third column gives the ratio between both execution times:</p>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th style="text-align: right;">SICKBY GraphReduction [μs]</th>
+<th style="text-align: right;">SICKBY as functions [μs] | ratio|</th>
+<th style="text-align: right;">ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="https://github.com/thma/lambda-ski/blob/main/test/factorial.ths">factorial</a></td>
+<td style="text-align: right;">1273</td>
+<td style="text-align: right;">24.92</td>
+<td style="text-align: right;">51</td>
+</tr>
+<tr class="even">
+<td><a href="https://github.com/thma/lambda-ski/blob/main/test/fibonacci.ths">fibonacci</a></td>
+<td style="text-align: right;">484</td>
+<td style="text-align: right;">50.70</td>
+<td style="text-align: right;">10</td>
+</tr>
+<tr class="odd">
+<td><a href="https://github.com/thma/lambda-ski/blob/main/test/ackermann.ths">ackermann</a></td>
+<td style="text-align: right;">386</td>
+<td style="text-align: right;">16,88</td>
+<td style="text-align: right;">23</td>
+</tr>
+<tr class="even">
+<td><a href="https://github.com/thma/lambda-ski/blob/main/test/gaussian.ths">gaussian sum</a></td>
+<td style="text-align: right;">1414</td>
+<td style="text-align: right;">16,18</td>
+<td style="text-align: right;">87</td>
+</tr>
+<tr class="odd">
+<td><a href="https://github.com/thma/lambda-ski/blob/main/test/tak.ths">tak</a></td>
+<td style="text-align: right;">3204</td>
+<td style="text-align: right;">75,69</td>
+<td style="text-align: right;">42</td>
+</tr>
+</tbody>
+</table>
+<p>For the fibonacci function the “combinators as native functions” approach is ten times faster, for the gaussian sum almost 90 times.</p>
+<h2 id="room-for-further-improvements">Room for further improvements</h2>
+<p>It’s interesting to see how the “combinators as native functions” execution performs in comparison to actual Haskell implementations of our five test functions. The Haskell native implementations can be found in the <a href="https://github.com/thma/lambda-ski/blob/main/benchmark/ReductionBenchmarks.hs">benchmark definition</a>.</p>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th style="text-align: right;">SICKBY as functions [μs]</th>
+<th style="text-align: right;">Haskell native [μs] | rat</th>
+<th style="text-align: right;">ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td style="text-align: right;">24.92</td>
+<td style="text-align: right;">4.743</td>
+<td style="text-align: right;">5</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td style="text-align: right;">50.70</td>
+<td style="text-align: right;">2.824</td>
+<td style="text-align: right;">18</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td style="text-align: right;">16,88</td>
+<td style="text-align: right;">0.497</td>
+<td style="text-align: right;">34</td>
+</tr>
+<tr class="even">
+<td>gaussian sum</td>
+<td style="text-align: right;">16,18</td>
+<td style="text-align: right;">1.302</td>
+<td style="text-align: right;">12</td>
+</tr>
+<tr class="odd">
+<td>tak</td>
+<td style="text-align: right;">75,69</td>
+<td style="text-align: right;">0.084</td>
+<td style="text-align: right;">903</td>
+</tr>
+</tbody>
+</table>
+<p>For simple unary function like <code>factorial</code> and <code>gaussian sum</code> the native implementation is only 5 to 12 times faster. That’s not bad for such a simple approach!</p>
+<p>But for more complex functions like <code>fibonacci</code> and in particular for binary or ternary functions like <code>ackermann</code> and <code>tak</code> the performance is not that good.</p>
+<p>This is caused by the inefficient “code generation” of the classic bracket abstraction: <a href="https://tromp.github.io/cl/LC.pdf">The output size grows quadratic</a> with internal complexity and number of variables. As each additional combinator or application will require additional execution time it’s easy to see why a quadratic growth in combinator code size will drastically decrease performance. There have been many attempts to optimize bracket abstraction by <a href="https://www.cantab.net/users/antoni.diller/brackets/intro.html">introducing additional combinators</a> and by <a href="https://tromp.github.io/cl/LC.pdf">applying additional optimization rules</a>.</p>
+<p>I leave it as an exercise to the interested reader to improve the bracket abstraction rules applied here in order to sigificantly speed up both the graph-reduction as the “combinators as native functions” implementations.</p>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a> | 
+    Source code is available at 
+    <a href="https://github.com/thma/thma.github.io">GitHub</a>
+</footer>
+
+</body>
+</html>
