@@ -177,12 +177,12 @@
 <span id="cb9-19"><a href="#cb9-19" aria-hidden="true"></a></span>
 <span id="cb9-20"><a href="#cb9-20" aria-hidden="true"></a><span class="ot">arith ::</span> (<span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>) <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
 <span id="cb9-21"><a href="#cb9-21" aria-hidden="true"></a>arith op <span class="ot">=</span> <span class="dt">CFun</span> <span class="op">$</span> \(<span class="dt">CInt</span> a) <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \(<span class="dt">CInt</span> b) <span class="ot">-&gt;</span> <span class="dt">CInt</span> (op a b)</span></code></pre></div>
-<p>As you can see, the combinators are implemented as <code>CFun</code> wrapped functions. So they bear some minor overhead for pattern matching the <code>CFun</code> constructor when using the <code>(!)</code> operator. But apart from that they are ordinary Haskell functions.</p>
+<p>As you can see, the combinators are implemented as <code>CFun</code> wrapped functions. So they bear some minor overhead for pattern matching the <code>CFun</code> constructor when using the <code>(!)</code> operator. But apart from that, they are ordinary Haskell functions.</p>
 <p>Trying out <code>link</code> in GHCi looks like follows:</p>
 <div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>ghci<span class="op">&gt;</span> link primitives cexpr</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a><span class="dv">3</span></span></code></pre></div>
 <p>So our initial expression <code>main = (\\x y -&gt; x) 3 4</code> got translated into a haskell function applied to it’s two arguments. As the function is fully saturated, the ghci implicit <code>show</code> request triggers its evaluation and we see the correct result <code>3</code> returned.</p>
-<h2 id="we-can-do-still-better">We can do still better</h2>
+<h2 id="we-can-still-do-better">We can still do better</h2>
 <p>I took the idea of having two passes, <code>translate</code> and <code>link</code> to transform the input SICKBY expressions verbatim from Matthew Naylor’s paper. I think it’s easier to explain the overall idea when breaking it down into these two separate steps. But it’s perfectly possible do the transformation in one pass:</p>
 <div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="co">-- | translate and link in one go</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a><span class="co">--   application terms will directly be transformed into (!) applications</span></span>

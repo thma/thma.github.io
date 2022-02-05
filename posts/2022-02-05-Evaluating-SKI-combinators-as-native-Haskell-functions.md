@@ -179,7 +179,7 @@ arith :: (Integer -> Integer -> Integer) -> CExpr
 arith op = CFun $ \(CInt a) -> CFun $ \(CInt b) -> CInt (op a b)
 ```
 
-As you can see, the combinators are implemented as `CFun` wrapped functions. So they bear some minor overhead for pattern matching the `CFun` constructor when using the `(!)` operator. But apart from that they are ordinary Haskell functions.
+As you can see, the combinators are implemented as `CFun` wrapped functions. So they bear some minor overhead for pattern matching the `CFun` constructor when using the `(!)` operator. But apart from that, they are ordinary Haskell functions.
 
 Trying out `link` in GHCi looks like follows:
 
@@ -190,7 +190,7 @@ ghci> link primitives cexpr
 
 So our initial expression `main = (\\x y -> x) 3 4` got translated into a haskell function applied to it's two arguments. As the function is fully saturated, the ghci implicit `show` request triggers its evaluation and we see the correct result `3` returned.
 
-## We can do still better
+## We can still do better
 
 I took the idea of having two passes, `translate` and `link` to transform the input SICKBY expressions verbatim from Matthew Naylor's paper. I think it's easier to explain the overall idea when breaking it down into these two separate steps. But it's perfectly possible do the transformation in one pass:
 
