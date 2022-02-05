@@ -4,7 +4,7 @@ author: Thomas Mahler
 tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, bracket abstraction, graph reduction, Y-combinator, recursion, mutable references, ST-Monad, STRef
 ---
 
-[![Actions Status](https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg)](https://github.com/thma/lambda-ski/actions) <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a>
+[![Actions Status](https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg)](https://github.com/thma/lambda-ski/actions) <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a>
 
 ## Abstract
 

@@ -18,7 +18,7 @@
     </em><br/><br/>
 </div>
 
-<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
 <h2 id="abstract">Abstract</h2>
 <p>In this post I present an alternative approach to combinator-based implementation of functional languages that is significantly faster than classical graph-reduction based solutions.</p>
 <p>As this approach makes use of combinator reduction directly implemented as Haskell functions it is also much simpler and smaller in size than explicit graph-reduction.</p>
@@ -752,7 +752,7 @@ HsWiki</code></pre>
     </em><br/><br/>
 </div>
 
-<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a></p>
+<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a></p>
 <h2 id="abstract">Abstract</h2>
 <p>Implementing a small functional language with a classic combinator based graph-reduction machine in Haskell.</p>
 <p>The implementation is structured into three parts:</p>

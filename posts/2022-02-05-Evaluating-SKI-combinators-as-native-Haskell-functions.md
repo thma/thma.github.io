@@ -5,7 +5,7 @@ tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, 
 ---
 
 
-[![Actions Status](https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg)](https://github.com/thma/lambda-ski/actions) 
+[![Actions Status](https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg)](https://github.com/thma/lambda-ski/actions) 
 <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
 
 
