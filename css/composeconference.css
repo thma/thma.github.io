@@ -1,5 +1,7 @@
 @import "code.css";
 @import "gh-markdown.css";
+@import url("https://cdn.jsdelivr.net/gh/vsalvino/computer-modern@main/fonts/sans.css");
+@import url("https://cdn.jsdelivr.net/gh/vsalvino/computer-modern@main/fonts/serif.css");
 
 body {
     background-color: white;
@@ -8,7 +10,12 @@ body {
     -ms-text-size-adjust: 100%;
     -webkit-text-size-adjust: 100%;
     color: #24292e;
+    font-family: "Computer Modern Sans", sans-serif;
+    /*
+    font-family: "Computer Modern Sans", sans-serif;
+    font-family: "Computer Modern Serif", serif;
     font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji;
+    */
     font-size: 16px;
     line-height: 1.4;
     word-wrap: break-word;
@@ -34,9 +41,10 @@ header {
 div.logo a {
     text-decoration: none;
     margin-left: auto;
-    color: #222222;
+    color: #9999cc;
+    /*color: #222222;*/
     font-size: 36px;
-    font-weight: 300;
+    font-weight: 550;
     line-height: 1.45;
 }
 
