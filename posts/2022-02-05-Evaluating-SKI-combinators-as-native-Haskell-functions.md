@@ -125,6 +125,7 @@ ghci> cexpr
 ```
 
 Now it's time to do the real work. We will have to perform two essential transformations:
+
 1. All combinators of the form `(CComb comb)` have to be replaced by the haskell functions implementing the combinator reduction rule.
 2. All applications `(CApp fun arg)` have to be replaced by actual function application.
 In our case we want apply functions of type `CExpr -> CExpr` that are wrapped by a `CFun` constructor. For this particular case we define an application operator `(!)` as follows:

@@ -97,13 +97,15 @@
 <span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>ghci<span class="op">&gt;</span> cexpr <span class="ot">=</span> translate expr</span>
 <span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a>ghci<span class="op">&gt;</span> cexpr</span>
 <span id="cb6-7"><a href="#cb6-7" aria-hidden="true"></a>((((<span class="dt">S</span> (<span class="dt">K</span> <span class="dt">K</span>)) <span class="dt">I</span>) <span class="dv">3</span>) <span class="dv">4</span>)</span></code></pre></div>
-<p>Now it’s time to do the real work. We will have to perform two essential transformations: 1. All combinators of the form <code>(CComb comb)</code> have to be replaced by the haskell functions implementing the combinator reduction rule. 2. All applications <code>(CApp fun arg)</code> have to be replaced by actual function application. In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that are wrapped by a <code>CFun</code> constructor. For this particular case we define an application operator <code>(!)</code> as follows:</p>
-<pre><code>```haskell
--- | apply a CExpr of shape (CFun f) to argument x by evaluating (f x)
-infixl 0 !
-(!) :: CExpr -&gt; CExpr -&gt; CExpr
-(CFun f) ! x = f x
-```</code></pre>
+<p>Now it’s time to do the real work. We will have to perform two essential transformations:</p>
+<ol type="1">
+<li><p>All combinators of the form <code>(CComb comb)</code> have to be replaced by the haskell functions implementing the combinator reduction rule.</p></li>
+<li><p>All applications <code>(CApp fun arg)</code> have to be replaced by actual function application. In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that are wrapped by a <code>CFun</code> constructor. For this particular case we define an application operator <code>(!)</code> as follows:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="co">-- | apply a CExpr of shape (CFun f) to argument x by evaluating (f x)</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a><span class="kw">infixl</span> <span class="dv">0</span> <span class="op">!</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a><span class="ot">(!) ::</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>(<span class="dt">CFun</span> f) <span class="op">!</span> x <span class="ot">=</span> f x</span></code></pre></div></li>
+</ol>
 <p>Both tasks are performed by the following <code>link</code> function:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | a global environment of combinator definitions</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">GlobalEnv</span> <span class="ot">=</span> [(<span class="dt">Combinator</span>,<span class="dt">CExpr</span>)]</span>
