@@ -23,8 +23,9 @@
 </div>
 
 <p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
-<h2 id="abstract">abstract</h2>
+<h2 id="abstract">Abstract</h2>
 <p>In this post I present an alternative approach to combinator-based implementation of functional languages that is significantly faster than classical graph-reduction based solutions.</p>
+<p>As this approach makes use of combinator reduction directly implemented as Haskell functions it is also much simpler and smaller in size than explicit graph-reduction.</p>
 <h2 id="introduction">Introduction</h2>
 <p>In a <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">previous post</a> I presented a classical approach to implement a functional language with combinator based graph-reduction in Haskell.</p>
 <p>The implementation was structured into three parts:</p>
@@ -47,7 +48,8 @@
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>      <span class="op">/</span> \</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>p1<span class="op">:</span>  <span class="op">@</span>   <span class="dv">4</span></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>    <span class="op">/</span> \</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>   <span class="dt">K</span>   <span class="dv">3</span></span></code></pre></div>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>  <span class="dt">K</span>   <span class="dv">3</span></span></code></pre></div>
+<p>In this post I’m looking for an alternative backend that can replace the graph-reduction engine.</p>
 <h2 id="gaining-a-new-perspective">Gaining a new perspective</h2>
 <p>The SICKBY combinators can be defined as ordinary Haskell functions:</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a>i x      <span class="ot">=</span> x         <span class="co">-- i = id</span></span>
@@ -60,7 +62,7 @@
 <p>It turns out that Matthew Naylor already wrote about this idea more than a decade ago in <a href="https://wiki.haskell.org/wikiupload/0/0a/TMR-Issue10.pdf">The Monad Reader, issue 10</a> (see also this <a href="https://smunix.github.io/kseo.github.io/posts/2016-12-30-write-you-an-interpreter.html">more recent coverage of the idea</a>).</p>
 <p>In the following section I will walk you through the details of this concept.</p>
 <h2 id="translating-sickby-expressions">Translating SICKBY expressions</h2>
-<p>In order to make use of haskell functions as combinators we’ll first need a data structure that allows to include native functions in addition to the actual terms:</p>
+<p>In order to make use of Haskell functions to implement combinator reduction we’ll first need a data structure that allows to include native functions in addition to the actual terms:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">LambdaToSKI</span> (<span class="dt">Combinator</span> (..), fromString)</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="co">-- | a compiled expression may be:</span></span>

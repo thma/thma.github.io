@@ -1,7 +1,7 @@
 ---
 title: Evaluating SKI combinators as native Haskell functions
 author: Thomas Mahler
-tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, bracket abstraction, graph reduction, Y-combinator, recursion, mutable references, graph-reduction, Haskell in Haskell
+tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, bracket abstraction, graph reduction, Y-combinator, recursion, graph-reduction, Haskell in Haskell
 ---
 
 
@@ -9,10 +9,11 @@ tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, 
 <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
 
 
-## abstract
+## Abstract
 
-In this post I present an alternative approach to combinator-based implementation of functional languages that is significantly faster than classical graph-reduction based solutions.
+In this post I present an alternative approach to combinator-based implementation of functional languages that is significantly faster than classical graph-reduction based solutions. 
 
+As this approach makes use of combinator reduction directly implemented as Haskell functions it is also much simpler and smaller in size than explicit graph-reduction.
 
 ## Introduction
 
@@ -49,8 +50,10 @@ p2:    @   ==>  3
       / \
 p1:  @   4
     / \
-   K   3
+  K   3
 ```
+
+In this post I'm looking for an alternative backend that can replace the graph-reduction engine.
 
 ## Gaining a new perspective
 
@@ -75,7 +78,7 @@ In the following section I will walk you through the details of this concept.
 
 ## Translating SICKBY expressions
 
-In order to make use of haskell functions as combinators we'll first need a data structure that allows to include native functions in addition to the actual terms:
+In order to make use of Haskell functions to implement combinator reduction we'll first need a data structure that allows to include native functions in addition to the actual terms:
 
 
 ```haskell
