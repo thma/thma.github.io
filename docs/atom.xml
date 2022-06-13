@@ -1627,7 +1627,7 @@ ghci&gt; skiExpr
     </em><br/><br/>
 </div>
 
-<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a></p>
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a></p>
 <h2 id="tldr">tl;dr</h2>
 <p>This article shows how algebraic effect systems can be used to maintain a clear separation of concerns between different parts of software systems. From a practical programming perspective this improves composability and testability of software components.</p>
 <p>I’m demonstrating this idea by using the Polysemy library to implement a multi-layered REST application conforming to the guidelines of the Clean Architecture model.</p>
@@ -1666,7 +1666,7 @@ ghci&gt; skiExpr
 <li><p>The <strong>Interface Adapters</strong> layer holds code for UI controllers and presenters as well as adapters to external resources like databases, message queues, configuration, Logging, etc.</p></li>
 <li><p>The <strong>External Interfaces</strong> layer contains the technical implementation of external interfaces. For example, a concrete REST service assembly, Web and UI infrastructure, databases, etc.</p></li>
 </ol>
-<h3 id="the-dependency-rule">The Dependency Rule</h3>
+<p>### The Dependency Rule</p>
 <blockquote>
 <p>The overriding rule that makes this architecture work is The Dependency Rule. This rule says that source code dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer circle. In particular, the name of something declared in an outer circle must not be mentioned by the code in the an inner circle. That includes, functions, classes. variables, or any other named software entity.</p>
 <p>Quoted from <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
@@ -1676,7 +1676,7 @@ ghci&gt; skiExpr
 <p>If you want to dive deeper into clean architecture I recommend the <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a> as an entry point. Robert C. Martin later also published a whole book <a href="https://www.amazon.com/Clean-Architecture-Craftsmans-Software-Structure/dp/0134494164">Clean Architecture: A Craftsman’s Guide to Software Structure and Design</a> on this concept.</p>
 <p>In the following sections I’ll explain how the clean architecture guidelines can be implemented in a Haskell REST API application by making use of the algebraic effect library <a href="https://github.com/polysemy-research/polysemy#readme">Polysemy</a>.</p>
 <h2 id="the-domain-layer">The Domain layer</h2>
-<p>The <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/Domain/ReservationDomain.hs">ReservationDomain</a> module implements the business logic for seat reservations in a very small boutique restaurant. The restaurant has only one big table with 20 seats. Each day the restaurants accepts only 20 reservations. (There is no limited time-slot for each guest.)</p>
+<p>The <a href="src/Domain/ReservationDomain.hs">ReservationDomain</a> module implements the business logic for seat reservations in a very small boutique restaurant. The restaurant has only one big table with 20 seats. Each day the restaurants accepts only 20 reservations. (There is no limited time-slot for each guest.)</p>
 <p>Please note: - all functions in this module are <strong>pure</strong> (they don’t do any IO) and <strong>total</strong> (they produce defined results for all possible input values).</p>
 <ul>
 <li>The definitions in this module do not have dependencies to anything from the outer circles.</li>
@@ -1684,10 +1684,10 @@ ghci&gt; skiExpr
 <p>At the core of our Domain lies the <code>Reservation</code> data type:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="co">-- | a data type representing a reservation</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Reservation</span> <span class="ot">=</span> <span class="dt">Reservation</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    {<span class="ot"> date     ::</span> <span class="dt">Day</span>     <span class="co">-- ^ the date of the reservation</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>    ,<span class="ot"> name     ::</span> <span class="dt">String</span>  <span class="co">-- ^ the name of the guest placing the reservation</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    ,<span class="ot"> email    ::</span> <span class="dt">String</span>  <span class="co">-- ^ the email address of the guest</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    ,<span class="ot"> quantity ::</span> <span class="dt">Natural</span> <span class="co">-- ^ how many seats are requested</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    {<span class="ot"> date     ::</span> <span class="dt">Day</span>    <span class="co">-- ^ the date of the reservation</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>    ,<span class="ot"> name     ::</span> <span class="dt">String</span> <span class="co">-- ^ the name of the guest placing the reservation</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    ,<span class="ot"> email    ::</span> <span class="dt">String</span> <span class="co">-- ^ the email address of the guest</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    ,<span class="ot"> quantity ::</span> <span class="dt">Natural</span>    <span class="co">-- ^ how many seats are requested</span></span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true"></a>    }</span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true"></a>    <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Generic</span>, <span class="dt">Read</span>, <span class="dt">Show</span>)</span></code></pre></div>
 <p>This type can be used to express facts like <em>Mr. Miller reserved two seats on 2020-06-01, he can be reached via his email address: manfred@miller.com</em>:</p>
@@ -1718,10 +1718,10 @@ ghci&gt; skiExpr
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>availableSeats maxCapacity reservations <span class="ot">=</span> maxCapacity <span class="op">-</span> usedCapacity reservations</span></code></pre></div>
 <p>The <code>Reservation</code> data type and some of the domain logic functions are depicted in the in the following diagram:</p>
 <figure>
-<img src="/img/domain.png" alt="" /><figcaption>The Domain layer</figcaption>
+<img src="domain.png" alt="" /><figcaption>The Domain layer</figcaption>
 </figure>
 <h3 id="testing">Testing</h3>
-<p>As already mentioned: this layer has no knowledge of the world and it’s all pure code. Testing domain logic in isolation therefore is straight forward, as you can see from the <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/test/DomainSpec.hs">DomainSpec</a> code.</p>
+<p>As already mentioned: this layer has no knowledge of the world and it’s all pure code. Testing domain logic in isolation therefore is straight forward, as you can see from the <a href="test/DomainSpec.hs">DomainSpec</a> code.</p>
 <p>The data types and functions of the domain layer can be used directly, without any mocking of components:</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a>day <span class="ot">=</span> fromGregorian <span class="dv">2020</span> <span class="dv">1</span> <span class="dv">29</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>res1 <span class="ot">=</span> <span class="dt">Reservation</span> day <span class="st">&quot;Andrew M. Jones&quot;</span> <span class="st">&quot;amjones@example.com&quot;</span> <span class="dv">4</span></span>
@@ -1745,7 +1745,7 @@ ghci&gt; skiExpr
 <p>The software in this layer contains application specific business rules. It encapsulates and implements all of the use cases of the system. These <strong>use cases orchestrate the flow of data to and from the entities, and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.</strong></p>
 <p>Quoted from the <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
 </blockquote>
-<p>The module <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/UseCases/ReservationUseCase.hs">ReservationUseCase</a> specifies the available use cases for the reservation system. It coordinates access to Effects and the actual domain logic. The module exposes service functions that will be used by the REST API in the ExternalInterfaces layer.</p>
+<p>The module <a href="src/UseCases/ReservationUseCase.hs">ReservationUseCase</a> specifies the available use cases for the reservation system. It coordinates access to Effects and the actual domain logic. The module exposes service functions that will be used by the REST API in the ExternalInterfaces layer.</p>
 <p>Implemented Use Cases:</p>
 <ol type="1">
 <li><p>Display the number of available seats for a given day</p></li>
@@ -1800,7 +1800,7 @@ ghci&gt; skiExpr
 <h3 id="declaration-of-effects">Declaration of effects</h3>
 <p>To understand the <code>fetch</code> function, in particular the expression <code>maybeList &lt;- getKvs day</code> we first have to know the definition of the <code>Persistence</code> effect:</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">Persistence</span> <span class="ot">=</span> <span class="dt">KVS</span> <span class="dt">Day</span> [<span class="dt">Dom.Reservation</span>]</span></code></pre></div>
-<p>Where KVS (standing for Key/Value Store) is a type that is also defined in the use case layer (<a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/UseCases/KVS.hs">KVS.hs</a>):</p>
+<p>Where KVS (standing for Key/Value Store) is a type that is also defined in the use case layer (<a href="src/UseCases/KVS.hs">KVS.hs</a>):</p>
 <div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="co">-- | a key value store specified as a GADT</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">KVS</span> k v m a <span class="kw">where</span></span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>  <span class="dt">ListAllKvs</span><span class="ot"> ::</span> <span class="dt">KVS</span> k v m [(k, v)]</span>
@@ -1826,12 +1826,12 @@ ghci&gt; skiExpr
 <p>On the left side of the diagram we see the use case controllers (aka <em>use case interactors</em>) like <code>availableSeats</code> that coordinate all activities and resources to fulfill a specific use case.</p>
 <p>On the right we see the gateway (or interface) code like the <code>KVS</code> abstraction of a key-value store or the <code>fetch</code> operation that wraps the access to the key-value store.</p>
 <figure>
-<img src="/img/use-cases.png" alt="" /><figcaption>Use Cases layer</figcaption>
+<img src="use-cases.png" alt="" /><figcaption>Use Cases layer</figcaption>
 </figure>
 <h3 id="interpretation-of-effects-testing">Interpretation of effects / Testing</h3>
 <p>The key value store functions like <code>getKvs</code> don’t perform any concrete operation. They just <code>declare</code> access to an abstract key-value store interface.</p>
 <p>The concrete interpretation of these calls will be specified in the application assembly (typically in <code>Main.hs</code>) or in the setup code of test cases. If we provide a <em>pure</em> interpretation then the resulting code will also be pure. This allows writing tests in the same pure way as for the domain logic.</p>
-<p>As an example, in <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/test/UseCasePureSpec.hs">UseCasePureSpec</a> I’m providing pure interpretations for all effects.</p>
+<p>As an example, in <a href="test/UseCasePureSpec.hs">UseCasePureSpec</a> I’m providing pure interpretations for all effects.</p>
 <p>The <code>runPure</code> function takes a program with effects and handles each effect till it gets reduced to <code>Either ReservationError (ReservationMap‚ a)</code>:</p>
 <div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="ot">runPure ::</span> <span class="dt">ReservationMap</span> </span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a>        <span class="ot">-&gt;</span> <span class="dt">Sem</span> &#39;[<span class="dt">UC.Persistence</span>, <span class="dt">State</span> <span class="dt">ReservationMap</span>, <span class="dt">Error</span> <span class="dt">UC.ReservationError</span>, <span class="dt">Trace</span>] a </span>
@@ -1864,9 +1864,9 @@ ghci&gt; skiExpr
 <span id="cb18-13"><a href="#cb18-13" aria-hidden="true"></a>      (runAvailableSeats initReservations day) <span class="ot">`shouldBe`</span> <span class="dv">16</span></span></code></pre></div>
 <h2 id="the-interface-adapters-layer">The Interface Adapters layer</h2>
 <p>This layer holds code for adapters to external resources like databases, message queues, configuration, Logging, etc.</p>
-<p>The Logging effect <code>Trace</code> ships with Polysemy, so we don’t have to implement anything here. (Of course we could overzealously implement our own Graylog adapter here, Hingegen hat unser <code>reservationServer</code> eine Typensignatur but I leave this as an exercise for the reader… )</p>
+<p>The Logging effect <code>Trace</code> ships with Polysemy, so we don’t have to implement anything here. (Of course we could overzealously implement our own Graylog adapter here, but I leave this as an exercise for the reader… )</p>
 <p>However, as the <code>KVS</code> type is our own invention we’ll have to provide our own implementations. (We could have used the <code>KVStore</code> type from <a href="https://hackage.haskell.org/package/polysemy-zoo-0.7.0.0/docs/Polysemy-KVStore.html">polysemy-zoo</a>, but for didactic purposes we will roll our own.)</p>
-<p>The following code is the in-memory implementation from the <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/InterfaceAdapters/KVSInMemory.hs">KVSInMemory</a> module. It defines a key-value store in terms of <code>State (Map k v)</code> that is a <code>Map k v</code> in a <code>State</code> effect context:</p>
+<p>The following code is the in-memory implementation from the <a href="src/InterfaceAdapters/KVSInMemory.hs">KVSInMemory</a> module. It defines a key-value store in terms of <code>State (Map k v)</code> that is a <code>Map k v</code> in a <code>State</code> effect context:</p>
 <div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a><span class="ot">runKvsOnMapState ::</span> ( <span class="dt">Member</span> (<span class="dt">State</span> (<span class="dt">M.Map</span> k v)) r, <span class="dt">Ord</span> k) </span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true"></a>                 <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a </span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true"></a>                 <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
@@ -1884,7 +1884,7 @@ ghci&gt; skiExpr
 <span id="cb20-4"><a href="#cb20-4" aria-hidden="true"></a>           <span class="ot">-&gt;</span> <span class="dt">Sem</span> r (<span class="dt">M.Map</span> k v, a)</span>
 <span id="cb20-5"><a href="#cb20-5" aria-hidden="true"></a>runKvsPure <span class="fu">map</span> <span class="ot">=</span> runState <span class="fu">map</span> <span class="op">.</span> runKvsOnMapState</span></code></pre></div>
 <h3 id="a-key-value-store-with-a-sqlite-backend.">A key-value store with a SQLite backend.</h3>
-<p>As we are in the interface adapters layer, we are allowed to get our hands dirty with <em>real world code</em>, like database access. As an example I have provided a SQLite based interpretation of the <code>KVS</code> effect in <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/InterfaceAdapters/KVSSqlite.hs">KVSSqllite.hs</a>.</p>
+<p>As we are in the interface adapters layer, we are allowed to get our hands dirty with <em>real world code</em>, like database access. As an example I have provided a SQLite based interpretation of the <code>KVS</code> effect in <a href="src/InterfaceAdapters/KVSSqlite.hs">KVSSqllite.hs</a>.</p>
 <p>The effect interpreting function is <code>runKvsAsSQLite</code>:</p>
 <div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a><span class="co">-- | Run a KVStore effect against a SQLite backend. Requires a Config object as input.</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true"></a><span class="ot">runKvsAsSQLite ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
@@ -1974,13 +1974,13 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <span id="cb25-11"><a href="#cb25-11" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span>  UC.availableSeats <span class="co">-- GET    /seats/YYYY-MM-DD</span></span></code></pre></div>
 <p>I really love how <strong>declarative</strong> this code is. <strong>We don’t have to tell how</strong> to exchange data between the REST server and the use case controllers.</p>
 <p>We <strong>just tell what we want</strong>: a mapping from the routes to the controller functions. That’s all!</p>
-<p>In the following diagram, we now see the third layer. Again, the arrow symbolises the dependency rule, which prohibits access from domain or use case layer to the interface adapters layer. To the right we see the <code>ReservationAPI</code> and its <code>reservationServer</code> implementation, which we just explored. They interact with the use case controller functions like <code>availableSeats</code>, <code>listAll</code>, etc.</p>
-<p>To the left we see the interpretations of the <code>KVS</code> effect (which was defined in the use case layer): <code>KVSInMemory</code>, <code>KVSSqlite</code> (and a third one <code>KVSFileServer</code>, a file based implementation which you could <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/InterfaceAdapters/KVSFileServer.hs">explore on your own</a>).</p>
+<p>In the following diagram, we now see the third layer. Again, the arrow symbolises the dependency rule, which prohibits access from domain or use case layer to the interface adapters layer. To the left we see the <code>ReservationAPI</code> and its <code>reservationServer</code> implementation, which we just explored. They interact with the use case controller functions like <code>availableSeats</code>, <code>listAll</code>, etc.</p>
+<p>To the right we see the interpretations of the <code>KVS</code> effect (which was defined in the use case layer): <code>KVSInMemory</code>, <code>KVSSqlite</code> (and also two other implementastions <code>KVSFileServer</code> and <code>KVSAcidState</code>, which you will find in <a href="src/InterfaceAdapters/">the InterfaceAdapters package</a>).</p>
 <figure>
-<img src="/img/interface-adapters.png" alt="" /><figcaption>Interface Adapters layer</figcaption>
+<img src="interface-adapters.png" alt="" /><figcaption>Interface Adapters layer</figcaption>
 </figure>
 <h3 id="testing-the-kvs-implementations">Testing the KVS implementations</h3>
-<p>We’ll have a closer look at the <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/test/InterfaceAdaptersKVSSQLiteSpec.hs">test of the SQLite implementation</a> of the <code>KVS</code> effect.</p>
+<p>We’ll have a closer look at the <a href="test/InterfaceAdaptersKVSSQLiteSpec.hs">test of the SQLite implementation</a> of the <code>KVS</code> effect.</p>
 <p>As Polysemy effects are involded we will need to provide an interpretation to actually perform the SQLLite operation.</p>
 <p>The test setup looks quite similar to the tests in the use case layer.</p>
 <p>We want our test to evaluate the KVS implementation independently of the domain logic and the use case layer. Therefore, we first define an example use case, featuring a data type <code>Memo</code> and a set of typical CRUD operations. The CRUD operations are using the <code>KVS</code> smart constructors and thus exhibit the typical Polysemy effect signatures:</p>
@@ -2110,7 +2110,7 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 </blockquote>
 <p>For the database we are already finished as the <a href="https://hackage.haskell.org/package/sqlite-simple">SQlite-Simple</a> library includes the SQLLite C runtime library and is thus self-contained.</p>
 <p>We will use <a href="http://www.aosabook.org/en/posa/warp.html">WARP</a> as our Web Server, which can be used as a library within our <code>Main</code> program. What we still have to do though, is to assemble a Servant web <code>Application</code> so that it can be executed on the warp server.</p>
-<p>We have done this step already for the testing of the REST service. The <code>createApp</code> function that we define in the <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/src/ExternalInterfaces/ApplicationAssembly.hs">ApplicationAssembly module</a> will look quite familiar, it just provides some more bells and whistles to integrate all the features that we have developed so far.</p>
+<p>We have done this step already for the testing of the REST service. The <code>createApp</code> function that we define in the <a href="src/ExternalInterfaces/ApplicationAssembly.hs">ApplicationAssembly module</a> will look quite familiar, it just provides some more bells and whistles to integrate all the features that we have developed so far.</p>
 <ul>
 <li><code>createApp</code> accepts a <code>Config</code> parameter which is used to configure application settings.</li>
 <li><code>selectKvsBackend</code> selects the concrete <code>KVS</code> interpretation.</li>
@@ -2161,11 +2161,15 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <span id="cb36-8"><a href="#cb36-8" aria-hidden="true"></a>  app    <span class="ot">&lt;-</span> createApp config</span>
 <span id="cb36-9"><a href="#cb36-9" aria-hidden="true"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Starting server on port &quot;</span> <span class="op">++</span> <span class="fu">show</span> (port config)</span>
 <span id="cb36-10"><a href="#cb36-10" aria-hidden="true"></a>  run (port config) app</span></code></pre></div>
-<p>The following diagram shows the elements added by the External Interface layer: - On the left we have application assembly code like <code>createApp</code> used by the <code>Warp</code> server or some of the different <code>runPure</code> functions that we used in HSpec tests. - On the right we have the SQLite runtime library that provides access to the SQLite database and the Haskell runtime in general, which provides access to the filesystem and the OS in general.</p>
+<p>The following diagram shows the elements added by the External Interface layer:</p>
+<ul>
+<li>On the left we have application assembly code like <code>createApp</code> used by the <code>Warp</code> server or some of the different <code>runPure</code> functions that we used in HSpec tests.</li>
+<li>On the right we have the SQLite runtime library that provides access to the SQLite database and the Haskell runtime in general, which provides access to the filesystem and the OS in general.</li>
+</ul>
 <figure>
-<img src="/img/clean-architecture.png" alt="" /><figcaption>External Interfaces layer</figcaption>
+<img src="clean-architecture.png" alt="" /><figcaption>External Interfaces layer</figcaption>
 </figure>
-<h3 id="testing-1">Testing</h3>
+<h3 id="testing-the-application-assembly">Testing the application assembly</h3>
 <p>Testing the application assembly is quite straightforward and resembles the testing of the REST service:</p>
 <div class="sourceCode" id="cb37"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true"></a><span class="ot">loadConfig ::</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true"></a>loadConfig <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Config</span> {port <span class="ot">=</span> <span class="dv">8080</span>, backend <span class="ot">=</span> <span class="dt">SQLite</span>, dbPath <span class="ot">=</span> <span class="st">&quot;kvs-assembly.db&quot;</span>, verbose <span class="ot">=</span> <span class="dt">False</span>}</span>
@@ -2198,9 +2202,9 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <p>You can launch it by executing <code>stack build --exec PolysemyCleanArchitecture</code> in the root folder of the project.</p>
 <p>This will launch the REST service and open up the Swagger UI in your Web browser:</p>
 <figure>
-<img src="/img/swaggerUI.png" alt="" /><figcaption>Swagger UI</figcaption>
+<img src="swaggerUI.png" alt="" /><figcaption>Swagger UI</figcaption>
 </figure>
-<p>The code for this goody can be found in the <a href="https://github.com/thma/PolysemyCleanArchitecture/tree/master/app/SwaggerUI.hs">SwaggerUI</a> module.</p>
+<p>The code for this goody can be found in the <a href="app/SwaggerUI.hs">SwaggerUI</a> module.</p>
 <h2 id="conclusion">Conclusion</h2>
 <p>Robert C. Martin concludes his blog post with a brief summary:</p>
 <blockquote>
