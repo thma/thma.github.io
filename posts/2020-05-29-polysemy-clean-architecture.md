@@ -108,7 +108,7 @@ The architecture consists of four layers, each of which contains components with
 4. The **External Interfaces** layer contains the technical implementation of external interfaces. For example,
    a concrete REST service assembly, Web and UI infrastructure, databases, etc. 
  
- ### The Dependency Rule
+### The Dependency Rule
   
 > The overriding rule that makes this architecture work is The Dependency Rule. This rule says that source code 
 > dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer 
@@ -144,7 +144,8 @@ The [ReservationDomain](src/Domain/ReservationDomain.hs) module implements the b
 seat reservations in a very small boutique restaurant. The restaurant has only one big table with 20 seats.
 Each day the restaurants accepts only 20 reservations. (There is no limited time-slot for each guest.)
 
-Please note: 
+Please note:
+
 - all functions in this module are **pure** (they don't do any IO) and **total** (they produce defined 
 results for all possible input values).
 
@@ -214,9 +215,9 @@ availableSeats maxCapacity reservations = maxCapacity - usedCapacity reservation
 The `Reservation` data type and some of the domain logic functions are depicted in the in the following
 diagram:
 
-![The Domain layer](domain.png)
+![The Domain layer](https://github.com/thma/PolysemyCleanArchitecture/raw/master/domain.png)
 
-### Testing
+### Testing the domain layer
 
 As already mentioned: this layer has no knowledge of the world and it's all pure code.
 Testing domain logic in isolation therefore is straight forward, 
@@ -415,7 +416,7 @@ coordinate all activities and resources to fulfill a specific use case.
 On the right we see the gateway (or interface) code like the `KVS` abstraction of a key-value store or the `fetch` 
 operation that wraps the access to the key-value store.
 
-![Use Cases layer](use-cases.png)
+![Use Cases layer](https://github.com/thma/PolysemyCleanArchitecture/raw/master/use-cases.png)
 
 ### Interpretation of effects / Testing
 
@@ -678,7 +679,7 @@ the use case controller functions like `availableSeats`, `listAll`, etc.
 To the right we see the interpretations of the `KVS` effect (which was defined in the use case layer): `KVSInMemory`, 
 `KVSSqlite` (and also two other implementastions `KVSFileServer` and `KVSAcidState`, which you will find in [the InterfaceAdapters package](src/InterfaceAdapters/)).
 
-![Interface Adapters layer](interface-adapters.png)
+![Interface Adapters layer](https://github.com/thma/PolysemyCleanArchitecture/raw/master/interface-adapters.png)
 
 ### Testing the KVS implementations
 
@@ -943,7 +944,7 @@ The following diagram shows the elements added by the External Interface layer:
 - On the right we have the SQLite runtime library that provides access to the SQLite database
   and the Haskell runtime in general, which provides access to the filesystem and the OS in general.
 
-![External Interfaces layer](clean-architecture.png)
+![External Interfaces layer](https://github.com/thma/PolysemyCleanArchitecture/raw/master/clean-architecture.png)
 
 ### Testing the application assembly
 
@@ -990,7 +991,7 @@ You can launch it by executing `stack build --exec PolysemyCleanArchitecture` in
 
 This will launch the REST service and open up the Swagger UI in your Web browser: 
 
-![Swagger UI](swaggerUI.png)
+![Swagger UI](https://github.com/thma/PolysemyCleanArchitecture/raw/master/swaggerUI.png)
 
 The code for this goody can be found in the 
 [SwaggerUI](app/SwaggerUI.hs) module.
