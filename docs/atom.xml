@@ -1916,7 +1916,7 @@ ghci&gt; skiExpr
 <li><p>The <strong>Interface Adapters</strong> layer holds code for UI controllers and presenters as well as adapters to external resources like databases, message queues, configuration, Logging, etc.</p></li>
 <li><p>The <strong>External Interfaces</strong> layer contains the technical implementation of external interfaces. For example, a concrete REST service assembly, Web and UI infrastructure, databases, etc.</p></li>
 </ol>
-<p>### The Dependency Rule</p>
+<h3 id="the-dependency-rule">The Dependency Rule</h3>
 <blockquote>
 <p>The overriding rule that makes this architecture work is The Dependency Rule. This rule says that source code dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer circle. In particular, the name of something declared in an outer circle must not be mentioned by the code in the an inner circle. That includes, functions, classes. variables, or any other named software entity.</p>
 <p>Quoted from <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
@@ -1927,9 +1927,10 @@ ghci&gt; skiExpr
 <p>In the following sections I’ll explain how the clean architecture guidelines can be implemented in a Haskell REST API application by making use of the algebraic effect library <a href="https://github.com/polysemy-research/polysemy#readme">Polysemy</a>.</p>
 <h2 id="the-domain-layer">The Domain layer</h2>
 <p>The <a href="src/Domain/ReservationDomain.hs">ReservationDomain</a> module implements the business logic for seat reservations in a very small boutique restaurant. The restaurant has only one big table with 20 seats. Each day the restaurants accepts only 20 reservations. (There is no limited time-slot for each guest.)</p>
-<p>Please note: - all functions in this module are <strong>pure</strong> (they don’t do any IO) and <strong>total</strong> (they produce defined results for all possible input values).</p>
+<p>Please note:</p>
 <ul>
-<li>The definitions in this module do not have dependencies to anything from the outer circles.</li>
+<li><p>all functions in this module are <strong>pure</strong> (they don’t do any IO) and <strong>total</strong> (they produce defined results for all possible input values).</p></li>
+<li><p>The definitions in this module do not have dependencies to anything from the outer circles.</p></li>
 </ul>
 <p>At the core of our Domain lies the <code>Reservation</code> data type:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="co">-- | a data type representing a reservation</span></span>
@@ -1968,9 +1969,9 @@ ghci&gt; skiExpr
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>availableSeats maxCapacity reservations <span class="ot">=</span> maxCapacity <span class="op">-</span> usedCapacity reservations</span></code></pre></div>
 <p>The <code>Reservation</code> data type and some of the domain logic functions are depicted in the in the following diagram:</p>
 <figure>
-<img src="domain.png" alt="" /><figcaption>The Domain layer</figcaption>
+<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/domain.png" alt="" /><figcaption>The Domain layer</figcaption>
 </figure>
-<h3 id="testing">Testing</h3>
+<h3 id="testing-the-domain-layer">Testing the domain layer</h3>
 <p>As already mentioned: this layer has no knowledge of the world and it’s all pure code. Testing domain logic in isolation therefore is straight forward, as you can see from the <a href="test/DomainSpec.hs">DomainSpec</a> code.</p>
 <p>The data types and functions of the domain layer can be used directly, without any mocking of components:</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a>day <span class="ot">=</span> fromGregorian <span class="dv">2020</span> <span class="dv">1</span> <span class="dv">29</span></span>
@@ -2076,7 +2077,7 @@ ghci&gt; skiExpr
 <p>On the left side of the diagram we see the use case controllers (aka <em>use case interactors</em>) like <code>availableSeats</code> that coordinate all activities and resources to fulfill a specific use case.</p>
 <p>On the right we see the gateway (or interface) code like the <code>KVS</code> abstraction of a key-value store or the <code>fetch</code> operation that wraps the access to the key-value store.</p>
 <figure>
-<img src="use-cases.png" alt="" /><figcaption>Use Cases layer</figcaption>
+<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/use-cases.png" alt="" /><figcaption>Use Cases layer</figcaption>
 </figure>
 <h3 id="interpretation-of-effects-testing">Interpretation of effects / Testing</h3>
 <p>The key value store functions like <code>getKvs</code> don’t perform any concrete operation. They just <code>declare</code> access to an abstract key-value store interface.</p>
@@ -2227,7 +2228,7 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <p>In the following diagram, we now see the third layer. Again, the arrow symbolises the dependency rule, which prohibits access from domain or use case layer to the interface adapters layer. To the left we see the <code>ReservationAPI</code> and its <code>reservationServer</code> implementation, which we just explored. They interact with the use case controller functions like <code>availableSeats</code>, <code>listAll</code>, etc.</p>
 <p>To the right we see the interpretations of the <code>KVS</code> effect (which was defined in the use case layer): <code>KVSInMemory</code>, <code>KVSSqlite</code> (and also two other implementastions <code>KVSFileServer</code> and <code>KVSAcidState</code>, which you will find in <a href="src/InterfaceAdapters/">the InterfaceAdapters package</a>).</p>
 <figure>
-<img src="interface-adapters.png" alt="" /><figcaption>Interface Adapters layer</figcaption>
+<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/interface-adapters.png" alt="" /><figcaption>Interface Adapters layer</figcaption>
 </figure>
 <h3 id="testing-the-kvs-implementations">Testing the KVS implementations</h3>
 <p>We’ll have a closer look at the <a href="test/InterfaceAdaptersKVSSQLiteSpec.hs">test of the SQLite implementation</a> of the <code>KVS</code> effect.</p>
@@ -2417,7 +2418,7 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <li>On the right we have the SQLite runtime library that provides access to the SQLite database and the Haskell runtime in general, which provides access to the filesystem and the OS in general.</li>
 </ul>
 <figure>
-<img src="clean-architecture.png" alt="" /><figcaption>External Interfaces layer</figcaption>
+<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/clean-architecture.png" alt="" /><figcaption>External Interfaces layer</figcaption>
 </figure>
 <h3 id="testing-the-application-assembly">Testing the application assembly</h3>
 <p>Testing the application assembly is quite straightforward and resembles the testing of the REST service:</p>
@@ -2452,7 +2453,7 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <p>You can launch it by executing <code>stack build --exec PolysemyCleanArchitecture</code> in the root folder of the project.</p>
 <p>This will launch the REST service and open up the Swagger UI in your Web browser:</p>
 <figure>
-<img src="swaggerUI.png" alt="" /><figcaption>Swagger UI</figcaption>
+<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/swaggerUI.png" alt="" /><figcaption>Swagger UI</figcaption>
 </figure>
 <p>The code for this goody can be found in the <a href="app/SwaggerUI.hs">SwaggerUI</a> module.</p>
 <h2 id="conclusion">Conclusion</h2>
