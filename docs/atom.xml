@@ -22,14 +22,14 @@
     </em><br/><br/>
 </div>
 
-<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a></p>
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
 <h2 id="introduction">Introduction</h2>
-<p>Two years ago I wrote <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Implementing Clean Architecture with Haskell and Polysemy</a> where demonstrated how core elements of Clean Architecture can be implemented with Polysemy in quite an elegant way.</p>
-<p>A few months ago an interesting question was raised in the <a href="https://github.com/thma/PolysemyCleanArchitecture/issues/2">issues section of the respectuve GitHub project</a>:</p>
+<p>Two years ago I wrote <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Implementing Clean Architecture with Haskell and Polysemy</a> where I demonstrated how core elements of Clean Architecture can be implemented with Polysemy in quite an elegant way.</p>
+<p>A few months ago an interesting question was raised in the <a href="https://github.com/thma/PolysemyCleanArchitecture/issues/2">issues section of the respective GitHub project</a>:</p>
 <blockquote>
-<p>I’m wondering if we want to change the server to serverless, is it easy to do that? If we treat the server as an effect, can we just change the [polysemy effect] interpreter?</p>
+<p>I’m wondering, if we want to change the server to serverless, is it easy to do that? If we treat the server as an effect, can we just change the [polysemy effect] interpreter?</p>
 </blockquote>
-<p>This question points to one of the grey spots of my original design: The whole polysemy effect stack is executed as part of the <code>createApp</code> function which provides an <code>Network.Wai.Application</code> which is then executed by <code>Warp.run</code>.</p>
+<p>This question points to one of the grey spots of my original design: The whole polysemy effect stack is executed as part of the <code>createApp</code> function which provides a <code>Network.Wai.Application</code> which is then executed by <code>Warp.run</code>.</p>
 <p>Wouldn’t it be much more elegant to also define the server execution as an effect? This would make the overall design more homogenous by giving the final control to the Polysemy effect interpreter.</p>
 <p>In this post I’m going to present a design that provides a solution for this.</p>
 <h2 id="the-old-way">The ‘old’ way</h2>
@@ -40,7 +40,7 @@
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>  <span class="kw">let</span> p <span class="ot">=</span> port config            <span class="co">-- obtain http port from config</span></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>  Warp.run p (createApp config)  <span class="co">-- create Application based on config and run it</span></span></code></pre></div>
 <p>As we can see from the <code>main</code> function our whole app is just an ordinary <code>Network.Wai.Application</code> which is executed by <code>Warp.run</code>.</p>
-<p>So the final control of this application is managed by warp. We don’t see anything of Polysemy here. Only if we dig deeper we’ll find that the Polysemy effect stack is interpreted somewhere under the hood of the <code>Application</code>:</p>
+<p>So the final control of this application is managed by warp. We don’t see anything of Polysemy here. Only if we dig deeper we’ll find that the Polysemy effect stack is interpreted under the hood of the <code>Application</code>:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Application</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>createApp config <span class="ot">=</span> serve reservationAPI (liftServer config)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a></span>
@@ -65,9 +65,9 @@
 <span id="cb2-22"><a href="#cb2-22" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
 <span id="cb2-23"><a href="#cb2-23" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
 <p>This design works perfectly fine and also follows the common practise to exploit the Servant <a href="https://hackage.haskell.org/package/servant-server-0.19.1/docs/Servant-Server.html#v:hoistServer"><code>hoistServer</code></a> mechanism.</p>
-<p>The only complaint is that the Polysemy effect interpreter is not executed as the outermost piece of code. Accordingly we have to deploy our application into warp rather than having Polysemy in control and executing warp as an effect.</p>
+<p>The only complaint is that the Polysemy effect interpreter is not executed as the outermost piece of code. Accordingly we have to <em>deploy our application into warp</em> rather than having Polysemy in control and <em>executing warp as an effect</em>.</p>
 <h2 id="the-new-solution">The new solution</h2>
-<p>Ok let’s take this challenge and try to fix this ‘bug’!</p>
+<p>Ok let’s take the challenge and try to fix this ‘bug’!</p>
 <p>My overall approach goes like this:</p>
 <ol type="1">
 <li><p>Define a new <code>ExternalInterfaces.AppServer</code> effect. This will allow to abstractly define usage of an application server as a Polysemy effect.</p></li>
@@ -114,16 +114,16 @@
 <span id="cb4-20"><a href="#cb4-20" aria-hidden="true"></a>          app <span class="ot">=</span> createApp config</span>
 <span id="cb4-21"><a href="#cb4-21" aria-hidden="true"></a>       <span class="kw">in</span> Warp.run p app</span></code></pre></div>
 <h3 id="putting-everything-together-in-a-new-main-function">Putting everything together in a new main function</h3>
-<p>The <code>main</code> function now contains the outer Polysemy effect stack:</p>
+<p>The <code>main</code> function now contains the outer Polysemy effect interpreter:</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig      <span class="co">-- loading the config as before</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>  serveAppFromConfig config <span class="co">-- declaring to run config based app on an AppServer</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer      <span class="co">-- use Warp to interprete this effect</span></span>
 <span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM                  <span class="co">-- finally lower the `Sem` stack into `IO ()`</span></span></code></pre></div>
-<p>Execution of the <em>inner</em> effect stack is still handled by <code>createApp</code> but the actual control of the complete program now lies within the outer effect stack in the <code>main</code> function. The <code>inner</code> effect stack is run as part of the <code>runWarpAppServer</code> Polysemy interpreter function.</p>
+<p>Interpretation of the <em>inner</em> effect stack is still handled by <code>createApp</code> but the actual control of the complete program now lies within the control of the outer effect interpreter in the <code>main</code> function. The <code>inner</code> effect stack is executed as part of the <code>runWarpAppServer</code> Polysemy interpreter function.</p>
 <h3 id="conclusion">Conclusion</h3>
-<p>I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect stack. Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.</p>
+<p>I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect interpreter. Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.</p>
 ]]></summary>
 </entry>
 <entry>

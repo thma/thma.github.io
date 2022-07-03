@@ -6,17 +6,18 @@ tags: clean-architecture, haskell, polysemy, algebraic-effects, domain-driven-de
 
 
 [![Actions Status](https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg)](https://github.com/thma/PolysemyCleanArchitecture/actions)
+<a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
 
 ## Introduction
 
-Two years ago I wrote [Implementing Clean Architecture with Haskell and Polysemy](https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html) where demonstrated how core elements of Clean Architecture can be implemented with Polysemy in quite an elegant way.
+Two years ago I wrote [Implementing Clean Architecture with Haskell and Polysemy](https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html) where I demonstrated how core elements of Clean Architecture can be implemented with Polysemy in quite an elegant way.
 
-A few months ago an interesting question was raised in the [issues section of the respectuve GitHub project](https://github.com/thma/PolysemyCleanArchitecture/issues/2):
+A few months ago an interesting question was raised in the [issues section of the respective GitHub project](https://github.com/thma/PolysemyCleanArchitecture/issues/2):
 
-> I'm wondering if we want to change the server to serverless, is it easy to do that? 
+> I'm wondering, if we want to change the server to serverless, is it easy to do that? 
 > If we treat the server as an effect, can we just change the [polysemy effect] interpreter?
 
-This question points to one of the grey spots of my original design: The whole polysemy effect stack is executed as part of the `createApp` function which provides an `Network.Wai.Application` which is then executed by `Warp.run`.
+This question points to one of the grey spots of my original design: The whole polysemy effect stack is executed as part of the `createApp` function which provides a `Network.Wai.Application` which is then executed by `Warp.run`.
 
 Wouldn't it be much more elegant to also define the server execution as an effect? This would make the overall design more homogenous by giving the final control to the Polysemy effect interpreter. 
 
@@ -36,7 +37,7 @@ main = do
 
 As we can see from the `main` function our whole app is just an ordinary `Network.Wai.Application` which is executed by `Warp.run`.
 
-So the final control of this application is managed by warp. We don't see anything of Polysemy here. Only if we dig deeper we'll find that the Polysemy effect stack is interpreted somewhere under the hood of the `Application`:
+So the final control of this application is managed by warp. We don't see anything of Polysemy here. Only if we dig deeper we'll find that the Polysemy effect stack is interpreted under the hood of the `Application`:
 
 ```haskell
 createApp :: Config -> Application
@@ -66,12 +67,12 @@ liftServer config = hoistServer reservationAPI (interpretServer config) reservat
 
 This design works perfectly fine and also follows the common practise to exploit the Servant [`hoistServer`](https://hackage.haskell.org/package/servant-server-0.19.1/docs/Servant-Server.html#v:hoistServer) mechanism.
 
-The only complaint is that the Polysemy effect interpreter is not executed as the outermost piece of code. Accordingly we have to deploy our application into warp rather than having Polysemy in control and executing warp as an effect.
+The only complaint is that the Polysemy effect interpreter is not executed as the outermost piece of code. Accordingly we have to *deploy our application into warp* rather than having Polysemy in control and *executing warp as an effect*.
 
 
 ## The new solution
 
-Ok let's take this challenge and try to fix this 'bug'!
+Ok let's take the challenge and try to fix this 'bug'!
 
 My overall approach goes like this:
 
@@ -138,7 +139,7 @@ runWarpAppServer = interpret $ \case
 
 ### Putting everything together in a new main function
 
-The `main` function now contains the outer Polysemy effect stack:
+The `main` function now contains the outer Polysemy effect interpreter:
 
 ```haskell
 main :: IO ()
@@ -149,9 +150,9 @@ main = do
     & runM                  -- finally lower the `Sem` stack into `IO ()`
 ```
 
-Execution of the *inner* effect stack is still handled by `createApp` but the actual control of the complete program now lies within the outer effect stack in the `main` function. The `inner` effect stack is run as part of the `runWarpAppServer` Polysemy interpreter function.
+Interpretation of the *inner* effect stack is still handled by `createApp` but the actual control of the complete program now lies within the control of the outer effect interpreter in the `main` function. The `inner` effect stack is executed as part of the `runWarpAppServer` Polysemy interpreter function.
 
 ### Conclusion
 
-I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect stack.
+I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect interpreter.
 Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.
