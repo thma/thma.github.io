@@ -8,8 +8,125 @@
         <name>Thomas Mahler</name>
         <email>Thomas.Mahler@ista.com</email>
     </author>
-    <updated>2022-02-05T00:00:00Z</updated>
+    <updated>2022-07-04T00:00:00Z</updated>
     <entry>
+    <title>Warp as an effect in Polysemy</title>
+    <link href="https://thma.github.io//posts/2022-07-04-polysemy-and-warp.html" />
+    <id>https://thma.github.io//posts/2022-07-04-polysemy-and-warp.html</id>
+    <published>2022-07-04T00:00:00Z</published>
+    <updated>2022-07-04T00:00:00Z</updated>
+    <summary type="html"><![CDATA[<div class="info">
+    <em>Posted on July  4, 2022
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a></p>
+<h2 id="introduction">Introduction</h2>
+<p>Two years ago I wrote <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Implementing Clean Architecture with Haskell and Polysemy</a> where demonstrated how core elements of Clean Architecture can be implemented with Polysemy in quite an elegant way.</p>
+<p>A few months ago an interesting question was raised in the <a href="https://github.com/thma/PolysemyCleanArchitecture/issues/2">issues section of the respectuve GitHub project</a>:</p>
+<blockquote>
+<p>I’m wondering if we want to change the server to serverless, is it easy to do that? If we treat the server as an effect, can we just change the [polysemy effect] interpreter?</p>
+</blockquote>
+<p>This question points to one of the grey spots of my original design: The whole polysemy effect stack is executed as part of the <code>createApp</code> function which provides an <code>Network.Wai.Application</code> which is then executed by <code>Warp.run</code>.</p>
+<p>Wouldn’t it be much more elegant to also define the server execution as an effect? This would make the overall design more homogenous by giving the final control to the Polysemy effect interpreter.</p>
+<p>In this post I’m going to present a design that provides a solution for this.</p>
+<h2 id="the-old-way">The ‘old’ way</h2>
+<p>In order to better understand the issue lets have a brieve look at the original design.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig           <span class="co">-- load configuration (e.g. from file)</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>  <span class="kw">let</span> p <span class="ot">=</span> port config            <span class="co">-- obtain http port from config</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>  Warp.run p (createApp config)  <span class="co">-- create Application based on config and run it</span></span></code></pre></div>
+<p>As we can see from the <code>main</code> function our whole app is just an ordinary <code>Network.Wai.Application</code> which is executed by <code>Warp.run</code>.</p>
+<p>So the final control of this application is managed by warp. We don’t see anything of Polysemy here. Only if we dig deeper we’ll find that the Polysemy effect stack is interpreted somewhere under the hood of the <code>Application</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Application</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>createApp config <span class="ot">=</span> serve reservationAPI (liftServer config)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a><span class="ot">liftServer ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> <span class="dt">Handler</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>liftServer config <span class="ot">=</span> hoistServer reservationAPI (interpretServer config) reservationServer</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a><span class="ot">    interpretServer ::</span> (<span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>                    <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> &#39;[<span class="dt">KVS</span> k v, <span class="dt">Input</span> <span class="dt">Config</span>, <span class="dt">Trace</span>, <span class="dt">Error</span> <span class="dt">ReservationError</span>, <span class="dt">Embed</span> <span class="dt">IO</span>] a <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a>    interpretServer conf sem  <span class="ot">=</span>  sem</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a>          <span class="op">&amp;</span> runSelectedKvsBackend conf</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>          <span class="op">&amp;</span> runInputConst conf</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a>          <span class="op">&amp;</span> runSelectedTrace conf</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true"></a>          <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true"></a>          <span class="op">&amp;</span> runM</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true"></a>          <span class="op">&amp;</span> liftToHandler</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true"></a><span class="ot">    liftToHandler ::</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">ReservationError</span> a) <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> <span class="fu">fmap</span> handleErrors</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true"></a><span class="ot">    handleErrors ::</span> <span class="dt">Either</span> <span class="dt">ReservationError</span> b <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ServerError</span> b</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
+<p>This design works perfectly fine and also follows the common practise to exploit the Servant <a href="https://hackage.haskell.org/package/servant-server-0.19.1/docs/Servant-Server.html#v:hoistServer"><code>hoistServer</code></a> mechanism.</p>
+<p>The only complaint is that the Polysemy effect interpreter is not executed as the outermost piece of code. Accordingly we have to deploy our application into warp rather than having Polysemy in control and executing warp as an effect.</p>
+<h2 id="the-new-solution">The new solution</h2>
+<p>Ok let’s take this challenge and try to fix this ‘bug’!</p>
+<p>My overall approach goes like this:</p>
+<ol type="1">
+<li><p>Define a new <code>ExternalInterfaces.AppServer</code> effect. This will allow to abstractly define usage of an application server as a Polysemy effect.</p></li>
+<li><p>Provide a Warp based implementation <code>ExternalInterfaces.WarpAppServer</code>. This will interprete the <code>AppServer</code> effect by running <a href="http://www.aosabook.org/en/posa/warp.html">Warp</a>.</p></li>
+<li><p>write a main function that drives the whole Polysemy effect stack, including the Warp server.</p></li>
+</ol>
+<h3 id="the-appserver-effect">The AppServer effect</h3>
+<p>First we define an abstract <code>AppServer</code> effect which captures the notion of executing a web application inside an http based server. We’ll support two constructors <code>ServeApp</code> which is more generic as it is modelled after the function signature of <code>Warp.run</code>. The second constructor <code>ServeAppFromConfig</code> is matching the design of my original polysemy app where different elements of the application can be configured by a central <code>Config</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="ot">{-# LANGUAGE TemplateHaskell #-}</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.AppServer</span> <span class="kw">where</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">InterfaceAdapters.Config</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Network.Wai</span>              (<span class="dt">Application</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span>                 (makeSem)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">AppServer</span> m a <span class="kw">where</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>  <span class="dt">ServeApp</span><span class="ot">           ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Application</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m ()    <span class="co">-- ^ serve a given application on a port</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span><span class="ot"> ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m ()                <span class="co">-- ^ construct an application from a configuration and serve it</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a><span class="co">-- using TemplateHaskell to generate serveApp and serveAppFromConfig effect functions</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>makeSem &#39;<span class="dt">&#39;AppServer</span></span></code></pre></div>
+<h3 id="the-warp-based-implementation-of-the-effect">The Warp based implementation of the effect</h3>
+<p>Implementing the effect is straightforward. <code>ServeApp</code> is directly implemented by <code>Warp.run</code>. <code>ServeAppFromConfig</code> creates an <code>Application</code> instance based on the <code>Config</code> and then executes it with <code>Warp.run</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.WarpAppServer</span> <span class="kw">where</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">ExternalInterfaces.AppServer</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">ExternalInterfaces.ApplicationAssembly</span> (createApp, loadConfig)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">InterfaceAdapters.Config</span>               (<span class="dt">Config</span> (..))</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Network.Wai.Handler.Warp</span>               <span class="kw">as</span> <span class="dt">Warp</span> (run)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span>                               (<span class="dt">Embed</span>, <span class="dt">Member</span>, <span class="dt">Sem</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>                                                         embed, interpret, runM)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a><span class="co">-- | Warp Based implementation of AppServer</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true"></a>runWarpAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true"></a>  <span class="co">-- this is the more generic version which maps directly to Warp.run</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true"></a>  <span class="dt">ServeApp</span> port app <span class="ot">-&gt;</span> embed <span class="op">$</span> Warp.run port app</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true"></a>  <span class="co">-- serving an application by constructing it from a config</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true"></a>    embed <span class="op">$</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true"></a>      <span class="kw">let</span> p   <span class="ot">=</span> port config</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true"></a>          app <span class="ot">=</span> createApp config</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true"></a>       <span class="kw">in</span> Warp.run p app</span></code></pre></div>
+<h3 id="putting-everything-together-in-a-new-main-function">Putting everything together in a new main function</h3>
+<p>The <code>main</code> function now contains the outer Polysemy effect stack:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig      <span class="co">-- loading the config as before</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>  serveAppFromConfig config <span class="co">-- declaring to run config based app on an AppServer</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer      <span class="co">-- use Warp to interprete this effect</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM                  <span class="co">-- finally lower the `Sem` stack into `IO ()`</span></span></code></pre></div>
+<p>Execution of the <em>inner</em> effect stack is still handled by <code>createApp</code> but the actual control of the complete program now lies within the outer effect stack in the <code>main</code> function. The <code>inner</code> effect stack is run as part of the <code>runWarpAppServer</code> Polysemy interpreter function.</p>
+<h3 id="conclusion">Conclusion</h3>
+<p>I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect stack. Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.</p>
+]]></summary>
+</entry>
+<entry>
     <title>Evaluating SKI combinators as native Haskell functions</title>
     <link href="https://thma.github.io//posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html" />
     <id>https://thma.github.io//posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html</id>
@@ -2460,71 +2577,6 @@ availableSeats GET    /seats/YYYY-MM-DD</code></pre>
 <p>I have emphasized the testability aspect quite a lot in this article. However, this approach allows switching freely between alternative backends in production environments as well.</p>
 <p>As we have seen Polysemy — or algebraic effect systems in general — make this possible by the separation of effect <em>declaration</em>, effect <em>usage</em> and effect <em>interpretation</em>.</p>
 <p>Furthermore, Polysemy also allows you to freely combine several effects. This is a huge gain in software composability.</p>
-]]></summary>
-</entry>
-<entry>
-    <title>Proof of functor laws for Maybe</title>
-    <link href="https://thma.github.io//posts/2020-04-17-maybe-functor-law-proof.html" />
-    <id>https://thma.github.io//posts/2020-04-17-maybe-functor-law-proof.html</id>
-    <published>2020-04-17T00:00:00Z</published>
-    <updated>2020-04-17T00:00:00Z</updated>
-    <summary type="html"><![CDATA[<div class="info">
-    <em>Posted on April 17, 2020
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<p>In this post I want to give a short example of how equational reasoning can be used to proof certain properties of a given piece of code in Haskell.</p>
-<p>So without further ado let’s begin:</p>
-<h2 id="known-facts">Known facts</h2>
-<p>The <code>Functor</code> instance declaration of the type <code>Maybe</code> is defined as:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="kw">instance</span>  <span class="dt">Functor</span> <span class="dt">Maybe</span>  <span class="kw">where</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>    <span class="fu">fmap</span> _ <span class="dt">Nothing</span>       <span class="ot">=</span> <span class="dt">Nothing</span>       <span class="co">-- (1)</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    <span class="fu">fmap</span> f (<span class="dt">Just</span> a)      <span class="ot">=</span> <span class="dt">Just</span> (f a)    <span class="co">-- (2)</span></span></code></pre></div>
-<p>The composition operator <code>(.)</code> is defined as:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">(.) ::</span> (b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> c</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>f <span class="op">.</span> g x <span class="ot">=</span> f (g x)                        <span class="co">-- (3)</span></span></code></pre></div>
-<p>The Identity function <code>id</code> is defined as:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="fu">id</span><span class="ot"> ::</span> a <span class="ot">-&gt;</span> a</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="fu">id</span> x <span class="ot">=</span>  x                                <span class="co">-- (4)</span></span></code></pre></div>
-<h2 id="claim">Claim</h2>
-<p>The claim is that <code>Maybe</code> fulfils the two functor laws:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="dv">1</span><span class="op">.:</span> <span class="fu">fmap</span> <span class="fu">id</span> <span class="ot">=</span> <span class="fu">id</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="dv">2</span><span class="op">.:</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) <span class="ot">=</span> (<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g)</span></code></pre></div>
-<h2 id="proof-of-the-first-law">Proof of the first law</h2>
-<p><strong>Claim:</strong> <code>fmap id m = id m</code>, for any <code>m</code> of type <code>Maybe a</code>.</p>
-<p><strong>Proof.</strong> On cases of <code>m</code>.</p>
-<p><em>Case 1:</em> <code>m = Nothing</code>.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="fu">fmap</span> <span class="fu">id</span> m <span class="ot">=</span> <span class="fu">fmap</span> <span class="fu">id</span> <span class="dt">Nothing</span> <span class="co">-- by expansion of m</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Nothing</span>         <span class="co">-- by applying equation (1)</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>          <span class="ot">=</span> <span class="fu">id</span> m            <span class="co">-- by definition m, by applying equation (4)</span></span></code></pre></div>
-<p><em>Case 2:</em> <code>m = Just a</code>.</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="fu">fmap</span> <span class="fu">id</span> m <span class="ot">=</span> <span class="fu">fmap</span> <span class="fu">id</span> (<span class="dt">Just</span> a) <span class="co">-- by expansion of m</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Just</span> (<span class="fu">id</span> a)      <span class="co">-- by applying equation (2)</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>          <span class="ot">=</span> <span class="dt">Just</span> a           <span class="co">-- by expansion of id (equation (4))</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>          <span class="ot">=</span> m                <span class="co">-- by definition of m</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>          <span class="ot">=</span> <span class="fu">id</span> m             <span class="co">-- by applying equation (4)</span></span></code></pre></div>
-<p>Therefore, <code>fmap id m = id m</code> in all cases.∎</p>
-<h2 id="proof-of-the-second-law">Proof of the second law</h2>
-<p><strong>Claim:</strong> <code>fmap (f . g) m = (fmap f . fmap g) m</code>, for any <code>m</code> of type <code>Maybe a</code>.</p>
-<p><strong>Proof.</strong> On cases of <code>m</code>.</p>
-<p><em>Case 1:</em> <code>m = Nothing</code>.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="fu">fmap</span> (f <span class="op">.</span> g) m      <span class="ot">=</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) <span class="dt">Nothing</span>    <span class="co">-- by expansion of m</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Nothing</span>                 <span class="co">-- by applying equation (1)</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>(<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g) m <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="fu">fmap</span> g <span class="dt">Nothing</span>) <span class="co">-- by applying equation (4) and expanding m</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="fu">fmap</span> f <span class="dt">Nothing</span>          <span class="co">-- by applying equation (1)</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Nothing</span>                 <span class="co">-- by applying equation (1)</span></span></code></pre></div>
-<p><em>Case 2:</em> <code>m = Just a</code>.</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">fmap</span> (f <span class="op">.</span> g) m      <span class="ot">=</span> <span class="fu">fmap</span> (f <span class="op">.</span> g) (<span class="dt">Just</span> a)    <span class="co">-- by expansion of m</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> ((f <span class="op">.</span> g) a)         <span class="co">-- by applying equation (2)</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>(<span class="fu">fmap</span> f <span class="op">.</span> <span class="fu">fmap</span> g) m <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="fu">fmap</span> g (<span class="dt">Just</span> a)) <span class="co">-- by applying equation (4) and expanding m</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="fu">fmap</span> f (<span class="dt">Just</span> (g a))      <span class="co">-- by applying equation (2)</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> (f (g a)            <span class="co">-- by applying equation (2)</span></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>                    <span class="ot">=</span> <span class="dt">Just</span> ((f <span class="op">.</span> g) a)         <span class="co">-- by applying equation (3)</span></span></code></pre></div>
-<p>Therefore, <code>fmap (f . g) m = (fmap f . fmap g) m</code> in all cases. ∎</p>
-<h2 id="conclusion">Conclusion</h2>
-<p>You’ll see this kind of reasoning quite a lot in Haskell documentation and online discussions. The simple reason is: if you can prove something you don’t have to test it.</p>
 ]]></summary>
 </entry>
 
