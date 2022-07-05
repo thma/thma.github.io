@@ -101,8 +101,8 @@ import           Network.Wai              (Application)
 import           Polysemy                 (makeSem)
 
 data AppServer m a where
-  ServeApp           :: Int -> Application -> AppServer m ()    -- ^ serve a given application on a port
-  ServeAppFromConfig :: Config -> AppServer m ()                -- ^ construct an application from a configuration and serve it
+  ServeApp           :: Application -> AppServer m () -- ^ serve a given application on a port
+  ServeAppFromConfig :: Config -> AppServer m ()      -- ^ construct an application from a configuration and serve it
 
 -- using TemplateHaskell to generate serveApp and serveAppFromConfig effect functions
 makeSem ''AppServer
@@ -124,17 +124,16 @@ import           Polysemy                               (Embed, Member, Sem,
                                                          embed, interpret, runM)
 
 -- | Warp Based implementation of AppServer
-runWarpAppServer :: (Member (Embed IO) r) => Sem (AppServer : r) a -> Sem r a
-runWarpAppServer = interpret $ \case
+runWarpAppServer :: (Member (Embed IO) r) => Int -> Sem (AppServer : r) a -> Sem r a
+runWarpAppServer port = interpret $ \case
   -- this is the more generic version which maps directly to Warp.run
-  ServeApp port app -> embed $ Warp.run port app
+  ServeApp app -> embed $ Warp.run port app
 
   -- serving an application by constructing it from a config
   ServeAppFromConfig config ->
     embed $
-      let p   = port config
-          app = createApp config
-       in Warp.run p app
+      let app = createApp config
+       in Warp.run port app
 ```
 
 ### Putting everything together in a new main function
@@ -145,14 +144,57 @@ The `main` function now contains the outer Polysemy effect interpreter:
 main :: IO ()
 main = do
   config <- loadConfig      -- loading the config as before
+  let p = port config       -- obtain http port from config
   serveAppFromConfig config -- declaring to run config based app on an AppServer
-    & runWarpAppServer      -- use Warp to interprete this effect
+    & runWarpAppServer p    -- use Warp to interprete this effect
     & runM                  -- finally lower the `Sem` stack into `IO ()`
 ```
 
 Interpretation of the *inner* effect stack is still handled by `createApp` but the actual control of the complete program now lies within the control of the outer effect interpreter in the `main` function. The `inner` effect stack is executed as part of the `runWarpAppServer` Polysemy interpreter function.
 
+### Bonus: An AWS Lambda HAL based implementation of the AppServer effect
+
+One of the many benefits of Polysemy is that it allows to provide multiple implementations of a given effect declaration.
+I'll demonstrate this by presenting an implementation of the `AppServer` effect that allows to host our application on AWS Lambda (using [wai-handler-hal](https://github.com/bellroy/wai-handler-hal)).
+
+```haskell
+module ExternalInterfaces.HalAppServer where
+
+import           ExternalInterfaces.AppServer
+import           ExternalInterfaces.ApplicationAssembly (createApp)
+import           InterfaceAdapters.Config               (Config)
+import           AWS.Lambda.Runtime                     (mRuntime)
+import qualified Network.Wai.Handler.Hal as Hal         (run)
+import           Polysemy                               (Embed, Member, Sem,
+                                                         embed, interpret, runM)
+
+-- | wai-handler-hal Based implementation of AppServer
+runHalAppServer :: (Member (Embed IO) r) => Sem (AppServer : r) a -> Sem r a
+runHalAppServer = interpret $ \case
+  ServeApp app -> embed $ mRuntime $ Hal.run app
+  ServeAppFromConfig config ->
+    embed $
+      let app = createApp config
+       in mRuntime $ Hal.run app
+```
+
+This looks very similar to the Warp implementation. The main difference is that we don't have to deal with an http port number as this will be managed by AWS Lambda.
+
+Here is an alternative main function that shows how to interprete our application with `runHalAppServer`:
+
+```haskell
+main :: IO ()
+main = do
+  config <- loadConfig
+  serveAppFromConfig config
+    & runHalAppServer -- use HAL to run rest application
+    & runM    
+```
+
+
 ### Conclusion
 
 I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect interpreter.
-Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.
+Following this way helps to make the separation between domain and use case logic from external interfaces and outward infrastructure even more distinct.
+
+As an additional bonus we can now transparently execute our application on different hosting environments just by switching effect interpreter functions.

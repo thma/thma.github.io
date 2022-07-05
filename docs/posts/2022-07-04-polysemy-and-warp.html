@@ -123,8 +123,8 @@
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span>                 (makeSem)</span>
 <span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a></span>
 <span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">AppServer</span> m a <span class="kw">where</span></span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>  <span class="dt">ServeApp</span><span class="ot">           ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Application</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m ()    <span class="co">-- ^ serve a given application on a port</span></span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span><span class="ot"> ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m ()                <span class="co">-- ^ construct an application from a configuration and serve it</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>  <span class="dt">ServeApp</span><span class="ot">           ::</span> <span class="dt">Application</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m () <span class="co">-- ^ serve a given application on a port</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span><span class="ot"> ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">AppServer</span> m ()      <span class="co">-- ^ construct an application from a configuration and serve it</span></span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a></span>
 <span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a><span class="co">-- using TemplateHaskell to generate serveApp and serveAppFromConfig effect functions</span></span>
 <span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>makeSem '<span class="dt">'AppServer</span></span></code></pre></div>
@@ -140,28 +140,57 @@
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>                                                         embed, interpret, runM)</span>
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a></span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a><span class="co">-- | Warp Based implementation of AppServer</span></span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true"></a>runWarpAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true"></a>runWarpAppServer port <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
 <span id="cb4-13"><a href="#cb4-13" aria-hidden="true"></a>  <span class="co">-- this is the more generic version which maps directly to Warp.run</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true"></a>  <span class="dt">ServeApp</span> port app <span class="ot">-&gt;</span> embed <span class="op">$</span> Warp.run port app</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true"></a>  <span class="dt">ServeApp</span> app <span class="ot">-&gt;</span> embed <span class="op">$</span> Warp.run port app</span>
 <span id="cb4-15"><a href="#cb4-15" aria-hidden="true"></a></span>
 <span id="cb4-16"><a href="#cb4-16" aria-hidden="true"></a>  <span class="co">-- serving an application by constructing it from a config</span></span>
 <span id="cb4-17"><a href="#cb4-17" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
 <span id="cb4-18"><a href="#cb4-18" aria-hidden="true"></a>    embed <span class="op">$</span></span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true"></a>      <span class="kw">let</span> p   <span class="ot">=</span> port config</span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true"></a>          app <span class="ot">=</span> createApp config</span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true"></a>       <span class="kw">in</span> Warp.run p app</span></code></pre></div>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true"></a>      <span class="kw">let</span> app <span class="ot">=</span> createApp config</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true"></a>       <span class="kw">in</span> Warp.run port app</span></code></pre></div>
 <h3 id="putting-everything-together-in-a-new-main-function">Putting everything together in a new main function</h3>
 <p>The <code>main</code> function now contains the outer Polysemy effect interpreter:</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig      <span class="co">-- loading the config as before</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>  serveAppFromConfig config <span class="co">-- declaring to run config based app on an AppServer</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer      <span class="co">-- use Warp to interprete this effect</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM                  <span class="co">-- finally lower the `Sem` stack into `IO ()`</span></span></code></pre></div>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>  <span class="kw">let</span> p <span class="ot">=</span> port config       <span class="co">-- obtain http port from config</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>  serveAppFromConfig config <span class="co">-- declaring to run config based app on an AppServer</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer p    <span class="co">-- use Warp to interprete this effect</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a>    <span class="op">&amp;</span> runM                  <span class="co">-- finally lower the `Sem` stack into `IO ()`</span></span></code></pre></div>
 <p>Interpretation of the <em>inner</em> effect stack is still handled by <code>createApp</code> but the actual control of the complete program now lies within the control of the outer effect interpreter in the <code>main</code> function. The <code>inner</code> effect stack is executed as part of the <code>runWarpAppServer</code> Polysemy interpreter function.</p>
+<h3 id="bonus-an-aws-lambda-hal-based-implementation-of-the-appserver-effect">Bonus: An AWS Lambda HAL based implementation of the AppServer effect</h3>
+<p>One of the many benefits of Polysemy is that it allows to provide multiple implementations of a given effect declaration. I’ll demonstrate this by presenting an implementation of the <code>AppServer</code> effect that allows to host our application on AWS Lambda (using <a href="https://github.com/bellroy/wai-handler-hal">wai-handler-hal</a>).</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.HalAppServer</span> <span class="kw">where</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">ExternalInterfaces.AppServer</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">ExternalInterfaces.ApplicationAssembly</span> (createApp)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">InterfaceAdapters.Config</span>               (<span class="dt">Config</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">AWS.Lambda.Runtime</span>                     (mRuntime)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Network.Wai.Handler.Hal</span> <span class="kw">as</span> <span class="dt">Hal</span>         (run)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span>                               (<span class="dt">Embed</span>, <span class="dt">Member</span>, <span class="dt">Sem</span>,</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true"></a>                                                         embed, interpret, runM)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true"></a><span class="co">-- | wai-handler-hal Based implementation of AppServer</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true"></a><span class="ot">runHalAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true"></a>runHalAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true"></a>  <span class="dt">ServeApp</span> app <span class="ot">-&gt;</span> embed <span class="op">$</span> mRuntime <span class="op">$</span> Hal.run app</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true"></a>    embed <span class="op">$</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true"></a>      <span class="kw">let</span> app <span class="ot">=</span> createApp config</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true"></a>       <span class="kw">in</span> mRuntime <span class="op">$</span> Hal.run app</span></code></pre></div>
+<p>This looks very similar to the Warp implementation. The main difference is that we don’t have to deal with an http port number as this will be managed by AWS Lambda.</p>
+<p>Here is an alternative main function that shows how to interprete our application with <code>runHalAppServer</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>  serveAppFromConfig config</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runHalAppServer <span class="co">-- use HAL to run rest application</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM    </span></code></pre></div>
 <h3 id="conclusion">Conclusion</h3>
-<p>I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect interpreter. Following this way helps to make the separation between domain and use case logic from external interfaces and outward servers even more distinct.</p>
+<p>I really like how this new approach cleans up the overall control flow and puts everything under control of the polysemy effect interpreter. Following this way helps to make the separation between domain and use case logic from external interfaces and outward infrastructure even more distinct.</p>
+<p>As an additional bonus we can now transparently execute our application on different hosting environments just by switching effect interpreter functions.</p>
 
 </main>
 
