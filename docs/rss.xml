@@ -7,8 +7,197 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Mon, 04 Jul 2022 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Sun, 17 Jul 2022 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Configuration of a Polysemy application</title>
+    <link>https://thma.github.io//posts/2022-07-17-configuration-of-a-polysemy-app.html</link>
+    <description><![CDATA[<div class="info">
+    <em>Posted on July 17, 2022
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="introduction">Introduction</h2>
+<p>This is yet another sequel to my <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Clean Architecture with Haskell and Polysemy article</a>.</p>
+<p>In my last blog post I demonstrated how the actual hosting of a WAI web app (e.g. with the Warp server or on AWS Lambda) can be defined as a Polysemy effect. The idea was well received on <a href="https://www.reddit.com/r/haskell/">reddit/r/haskell</a> and also stirred some further discussions. One question that came up: why did I explicitly load configuration before starting the Polysemy effect interpreter? Wouldn’t it be much more in line with the overall idea of my <em>Polysemy Clean Architecture</em> to handle this loading also as an effect?</p>
+<p>Here is my original code:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config BEFORE starting the Polysemy effect interpreter</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<p>I explained my reasons for this design but promised to look for a better solution.</p>
+<p>In the following I’ll explain the new design that I came up with.</p>
+<h2 id="the-ideas-behind-my-original-design">The ideas behind my original design</h2>
+<p>The central reason for explicitely loading the configuration before starting the polysemy interpreter was that the configuration <code>config</code> is needed to select effect interpreter functions in the assembly of the WAI web app. To better understand this we’ll drill down the execution sequence starting from <code>runWarpAppServer</code> effect handler:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>runWarpAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>  <span class="co">-- serving an application by constructing it from a config</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>    embed <span class="op">$</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>      <span class="kw">let</span> app <span class="ot">=</span> createApp config</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>       <span class="kw">in</span> <span class="kw">do</span> </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>        <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;starting Warp on Port &quot;</span> <span class="op">++</span> <span class="fu">show</span> (port config)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>        Warp.run (port config) app</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Application</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>createApp config <span class="ot">=</span> serve reservationAPI (liftServer config)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true"></a><span class="ot">liftServer ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> <span class="dt">Handler</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true"></a>liftServer config <span class="ot">=</span> hoistServer reservationAPI (interpretServer config) reservationServer</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true"></a><span class="ot">    interpretServer ::</span> (<span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true"></a>                    <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> &#39;[<span class="dt">KVS</span> k v, <span class="dt">Input</span> <span class="dt">Config</span>, <span class="dt">Trace</span>, <span class="dt">Error</span> <span class="dt">ReservationError</span>, <span class="dt">Embed</span> <span class="dt">IO</span>] a <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true"></a>    interpretServer config sem  <span class="ot">=</span>  sem</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true"></a>      <span class="op">&amp;</span> runSelectedKvsBackend config</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true"></a>      <span class="op">&amp;</span> runInputConst config</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true"></a>      <span class="op">&amp;</span> runSelectedTrace config</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true"></a>      <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true"></a>      <span class="op">&amp;</span> runM</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true"></a>      <span class="op">&amp;</span> liftToHandler</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true"></a><span class="ot">    liftToHandler ::</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">ReservationError</span> a) <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> <span class="fu">fmap</span> handleErrors</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true"></a></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true"></a><span class="ot">    handleErrors ::</span> <span class="dt">Either</span> <span class="dt">ReservationError</span> b <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ServerError</span> b</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
+<p>The interesting point here is the usage of the <code>Config</code> parameter <code>config</code> in <code>interpretServer</code>. It is used to select concrete effect handler functions in <code>runSelectedKvsBackend conf</code> and <code>runSelectedTrace conf</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- | global application configuration</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Config</span> <span class="ot">=</span> <span class="dt">Config</span> {</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="ot">  port        ::</span> <span class="dt">Int</span>     <span class="co">-- ^ the port where the server is listening</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a>,<span class="ot"> backend     ::</span> <span class="dt">Backend</span> <span class="co">-- ^ selects the persistence backend for the KV store</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a>,<span class="ot"> dbPath      ::</span> <span class="dt">String</span>  <span class="co">-- ^ the path to the database</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>,<span class="ot"> verbose     ::</span> <span class="dt">Bool</span>    <span class="co">-- ^ True enables logging</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a>} <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Backend</span> <span class="ot">=</span> <span class="dt">SQLite</span> <span class="op">|</span> <span class="dt">FileServer</span> <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a><span class="co">-- | can select between SQLite or FileServer persistence backends.</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a><span class="ot">runSelectedKvsBackend ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>                 <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true"></a>runSelectedKvsBackend config <span class="ot">=</span> <span class="kw">case</span> backend config <span class="kw">of</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true"></a>  <span class="dt">SQLite</span>     <span class="ot">-&gt;</span> runKvsAsSQLite</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true"></a>  <span class="dt">FileServer</span> <span class="ot">-&gt;</span> runKvsAsFileServer</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true"></a>  </span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true"></a><span class="co">-- | if the config flag verbose is set to True, trace to Console, else ignore all trace messages</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true"></a><span class="ot">runSelectedTrace ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> (<span class="dt">Sem</span> (<span class="dt">Trace</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a)</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true"></a>runSelectedTrace config <span class="ot">=</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true"></a>  <span class="kw">if</span> verbose config</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true"></a>    <span class="kw">then</span> traceToStdout</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true"></a>    <span class="kw">else</span> ignoreTrace</span></code></pre></div>
+<p>In addition to this <code>config</code> is also used by the <code>Input</code> effect handler <code>runInputConst conf</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="co">-- | Run an &#39;Input&#39; effect by always giving back the same value.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="ot">runInputConst ::</span> i <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">Input</span> i &#39;<span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>runInputConst c <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>  <span class="dt">Input</span> <span class="ot">-&gt;</span> <span class="fu">pure</span> c</span></code></pre></div>
+<p>This allows effect handlers like <code>runKvsAsSQLite</code> to use <code>config</code> as configuration. For example to obtain the database connection:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy.Input</span>                 (<span class="dt">Input</span>, input)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy.Trace</span>                 (<span class="dt">Trace</span>, trace)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a><span class="co">-- | delete a value from db identified by key</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a><span class="ot">deleteAction ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k) <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a>deleteAction key <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;deleteAction: &quot;</span> <span class="op">++</span> <span class="fu">show</span> key</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true"></a>  conn <span class="ot">&lt;-</span> connectionFrom input</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true"></a>  embed <span class="op">$</span> SQL.executeNamed conn <span class="st">&quot;DELETE FROM store WHERE key = :key&quot;</span> [<span class="st">&quot;:key&quot;</span> <span class="op">:=</span> <span class="fu">show</span> key]</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true"></a><span class="co">-- | create a connection based on configuration data, make sure table &quot;store&quot; exists.</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true"></a><span class="ot">connectionFrom ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> r <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r <span class="dt">SQL.Connection</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true"></a>connectionFrom c <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> c</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;open connection to: &quot;</span> <span class="op">++</span> dbPath config</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true"></a>  embed (getConnection (dbPath config))</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true"></a>    <span class="kw">where</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true"></a><span class="ot">      getConnection ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">SQL.Connection</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true"></a>      getConnection dbFile <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true"></a>        conn <span class="ot">&lt;-</span> SQL.open dbFile</span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true"></a>        SQL.execute_ conn <span class="st">&quot;CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT)&quot;</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true"></a>        <span class="fu">return</span> conn</span></code></pre></div>
+<p>My reasoning was as follows: As I needed <code>config</code> as an explicit parameter to <code>serveAppFromConfig</code> in the <code>main</code> glue code and <code>loadConfig</code>being of type <code>IO Config</code>, I thought I had to explicitely execute it in the <code>IO</code> Monad and then handing it into the Polysemy effect chain:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<p>But it turned out that I had just not thought things through deep enough!</p>
+<h2 id="chaining-of-config-loading-and-application-execution-as-effects">Chaining of Config loading and application execution as effects</h2>
+<p>If we take a step back and look at the code in the <code>UseCases</code> package we’ll see that we already have shown how to combine different effects into a sequence within the Polysemy <code>Sem</code> Monad. Take for example the following use case implementation:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="ot">cancel ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r)  <span class="ot">=&gt;</span> <span class="dt">Dom.Reservation</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>cancel res<span class="op">@</span>(<span class="dt">Dom.Reservation</span> date _ _ _) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;deleting reservation &quot;</span> <span class="op">++</span> <span class="fu">show</span> res</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>  reservations <span class="ot">&lt;-</span> fetch date</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;before: &quot;</span> <span class="op">++</span> <span class="fu">show</span> reservations</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true"></a>  <span class="kw">let</span> after <span class="ot">=</span> Dom.cancelReservation res reservations</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;after: &quot;</span> <span class="op">++</span> <span class="fu">show</span> after</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true"></a>  insertKvs date after</span></code></pre></div>
+<p>So instead of glueing stuff together in <code>main :: IO ()</code>, wouldn’t it be much more in line with our overall intention to formulate the sequencing of configuration loading and hosting the WAI application as a sequence of Polysemy effects? For example:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | load configuration via ConfigProvider effect, then contruct and run app via AppServer effect</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="ot">configureAndServeApp ::</span>  (<span class="dt">Member</span> <span class="dt">ConfigProvider</span> r, <span class="dt">Member</span> <span class="dt">AppServer</span> r)  <span class="ot">=&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>configureAndServeApp <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> getConfig</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>  serveAppFromConfig config</span></code></pre></div>
+<p>In this function we use two effects <code>ConfigProvider</code> and <code>Appserver</code>. I already described the <code>AppServer</code> effect in <a href="https://thma.github.io/posts/2022-07-04-polysemy-and-warp.html">my previous blog post</a>. So we only have to consider the <code>ConfigProvider</code> effect here.</p>
+<h2 id="defining-a-configprovider-effect">Defining a ConfigProvider Effect</h2>
+<p>First we define the ConfigProvider Effect. It provides an effect function <code>getConfig :: Member ConfigProvider r =&gt; Sem r Config</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="ot">{-# LANGUAGE TemplateHaskell #-}</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.ConfigProvider</span> <span class="kw">where</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Polysemy</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a><span class="co">-- | The ConfigProvider effect can be used to provide and application with a Config instance.</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">ConfigProvider</span> m a <span class="kw">where</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true"></a>  <span class="dt">GetConfig</span><span class="ot"> ::</span> <span class="dt">ConfigProvider</span> m <span class="dt">Config</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true"></a><span class="co">-- makeSem uses TemplateHaskell to generate effect functions (or smart Constructors) from the GADT definition:</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true"></a><span class="co">-- getConfig :: Member ConfigProvider r =&gt; Sem r Config</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true"></a>makeSem &#39;<span class="dt">&#39;ConfigProvider</span></span></code></pre></div>
+<h2 id="implementing-the-configprovider-effect">Implementing the ConfigProvider effect</h2>
+<p>Next we define an implementation of the <code>ConfigProvider</code> effect by defining an effect handler function that loads a <code>Config</code> instance from a file:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.FileConfigProvider</span> <span class="kw">where</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">ExternalInterfaces.ConfigProvider</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Polysemy</span> (<span class="dt">Embed</span>, <span class="dt">Member</span>, <span class="dt">Sem</span>, embed, interpret)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true"></a><span class="co">-- | provides a Config object from a local file path</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true"></a><span class="ot">runFileConfigProvider ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">ConfigProvider</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true"></a>runFileConfigProvider path <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true"></a>  <span class="dt">GetConfig</span> <span class="ot">-&gt;</span> embed <span class="op">$</span> loadConfig path</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true"></a></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true"></a><span class="co">-- | load application config from file &quot;application.config&quot;</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true"></a><span class="ot">loadConfig ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true"></a>loadConfig path <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true"></a>  input <span class="ot">&lt;-</span> <span class="fu">readFile</span> path</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true"></a>  <span class="fu">pure</span> <span class="op">$</span> <span class="fu">read</span> input</span></code></pre></div>
+<h2 id="the-new-and-shining-main-function">The new and shining main function</h2>
+<p>Now we have all the ingredients ready to clean up the glue code in <code>main :: IO ()</code>:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>  configureAndServeApp</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>    <span class="op">&amp;</span> runFileConfigProvider <span class="st">&quot;application.config&quot;</span>  <span class="co">-- provide Config from a file</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer                            <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<p>The complete control of the application is now exclusively managed by the Polysemy effect library.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>I’m excited about how the comments on my last blog post have helped me develop the Polysemy Clean Architecture idea into a much improved design.</p>
+<p>So I’m sure that this post will trigger some more discussions and will help to improve remaining grey spots in the overall concept.</p>
+]]></description>
+    <pubDate>Sun, 17 Jul 2022 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2022-07-17-configuration-of-a-polysemy-app.html</guid>
+    <dc:creator>Thomas Mahler</dc:creator>
+</item>
+<item>
     <title>Warp as an effect in Polysemy</title>
     <link>https://thma.github.io//posts/2022-07-04-polysemy-and-warp.html</link>
     <description><![CDATA[<div class="info">
@@ -2007,609 +2196,6 @@ ghci&gt; skiExpr
 ]]></description>
     <pubDate>Sun, 15 Nov 2020 00:00:00 UT</pubDate>
     <guid>https://thma.github.io//posts/2020-11-15-using-hakyll-with-github-pages.html</guid>
-    <dc:creator>Thomas Mahler</dc:creator>
-</item>
-<item>
-    <title>Implementing Clean Architecture with Haskell and Polysemy</title>
-    <link>https://thma.github.io//posts/2020-05-29-polysemy-clean-architecture.html</link>
-    <description><![CDATA[<div class="info">
-    <em>Posted on May 29, 2020
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a></p>
-<h2 id="tldr">tl;dr</h2>
-<p>This article shows how algebraic effect systems can be used to maintain a clear separation of concerns between different parts of software systems. From a practical programming perspective this improves composability and testability of software components.</p>
-<p>I’m demonstrating this idea by using the Polysemy library to implement a multi-layered REST application conforming to the guidelines of the Clean Architecture model.</p>
-<h2 id="motivation">Motivation</h2>
-<p>While writing <a href="https://github.com/thma/WhyHaskellMatters#readme">Why Haskell Matters</a> I prepared a little demo application that was meant to showcase a cleanly designed REST application in Haskell. In particular, I wanted to demonstrate how the clear separation of <em>pure</em> and <em>impure</em> code helps to provide strict separation of concerns and state-of-the-art testability of all application layers.</p>
-<p><strong>I failed!</strong></p>
-<p>I was able to write the domain logic in <em>pure</em> code consisting only of <em>total</em> functions. It was a great pleasure to write unit tests for them!</p>
-<p>However, as soon as I started writing controllers that coordinate access to the domain logic as well as to a persistence layer to retrieve and store data, I was stuck in the IO Monad. That is, in test cases I was not able to test the controllers independently of the concrete backend.</p>
-<p>Then I tried to apply the <em>final tagless</em> pattern for the persistence layer. This allowed abstracting out the concrete persistence layer and writing controller tests with a mocked persistence backend. But when it came to testing the REST API handlers (written with Servant) I was again stuck in the IO Monad as the Handler type is defined as <code>newtype Handler a = Handler { runHandler' :: ExceptT ServerError IO a }</code>. Maybe it’s not a principle issue but just my brain being too small…</p>
-<p>I was desperately looking for something that allowed me to combine different types of effects (like persistence, logging, configuration, http handlers, error handling, etc.) in controllers and handlers but still to be able to write tests that allow using mocks or stubs to test components in isolation.</p>
-<p>As I reached a dead end, I had a look at some of the <em>algebraic effect systems</em> available in Haskell, like eff, extensible-effects, fused-effects, freer-simple and Polysemy.</p>
-<p>In algebraic effect systems, effectful programs are split into two separate parts: the specification of the effects to be performed, and the interpretation (or semantics) given to them.</p>
-<p>So my idea was to provide special effect interpretations that would allow building mocked effects for my test suite.</p>
-<p>After seeing a <a href="https://youtu.be/kIwd1D9m1gE">presentation on maintainable software architecture with Polysemy</a> which answered many of my questions I rewrote my application based on Polysemy powered algebraic effects.</p>
-<p>I’m pretty satisfied with the result, and of course I’m eager to share my approach with you!</p>
-<h2 id="the-challenge">The Challenge</h2>
-<p>A very small boutique restaurant (serving excellent vietnamese food) is looking for a reservation system that allows managing reservations. The restaurant has only twenty seats, they also take only a maximum of twenty reservations per day. (So guests can stay the whole evening and don’t have to leave after some time.) (I adopted this scenario from a inspiring <a href="https://youtu.be/US8QG9I1XW0">talk by Mark Seemann</a>)</p>
-<p>They have asked us to write the REST backend for their reservation system.</p>
-<p>The chef insists on a scrupulously clean kitchen and is also a lover of clean code. He has read about clean architecture and wants his new software to be a perfect example!</p>
-<p>So we cannot just hack away but first have to understand what is expected from us when we are to deliver a clean architecture.</p>
-<h2 id="what-makes-a-clean-architecture">What makes a Clean Architecture ?</h2>
-<p>I’m following the introduction to clean architecture by Robert C. Martin on his <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Code blog</a>. He states that his concept builds up on several earlier approaches like <a href="https://en.wikipedia.org/wiki/Hexagonal_architecture_(software)">hexagonal architecture</a>, <a href="https://en.wikipedia.org/wiki/Hexagonal_architecture_(software)">ports and adapters</a> or <a href="https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/">Onion Architecture</a>.</p>
-<p>According to him all these approaches share a similar objective: achieve separation of concerns by dividing a software system into different layers. All approaches result in system designs that share a common set of features:</p>
-<ol type="1">
-<li><p>The architecture does not depend on any specific software libraries or frameworks. This allows to freely choose such tools according to the actual needs. This avoids “vendor lock in”.</p></li>
-<li><p>High testability. The business logic can be tested without any external element like UI, DB, Web Server, etc.</p></li>
-<li><p>The UI is loosely coupled to the core system. So it can be easily changed or replaced without affecting the rest of the system.</p></li>
-<li><p>The Database is also “external” to the core system. It can be easily changed (even from an RDBMS to NonSQL DB) without affecting the business logic.</p></li>
-<li><p>The Business logic is agnostic of the outside world. It has no dependencies to any external systems like DB, ESB, etc.</p></li>
-</ol>
-<h3 id="layers-with-clearly-separated-responsibilities">Layers with clearly separated responsibilities</h3>
-<p>The architecture consists of four layers, each of which contains components with a specific scope and a limited set of responsibilities.</p>
-<ol type="1">
-<li><p>At the centre sits the <strong>Domain</strong> layer consisting of entities and core business logic.</p></li>
-<li><p>Next comes the <strong>Use Cases</strong> layer where all resources are coordinated that are required to fulfill a given use case. In particular, it uses entities and logic from the domain layer to implement use cases. But typically it must also interface to a persistent storage to retrieve and store entities.</p></li>
-<li><p>The <strong>Interface Adapters</strong> layer holds code for UI controllers and presenters as well as adapters to external resources like databases, message queues, configuration, Logging, etc.</p></li>
-<li><p>The <strong>External Interfaces</strong> layer contains the technical implementation of external interfaces. For example, a concrete REST service assembly, Web and UI infrastructure, databases, etc.</p></li>
-</ol>
-<h3 id="the-dependency-rule">The Dependency Rule</h3>
-<blockquote>
-<p>The overriding rule that makes this architecture work is The Dependency Rule. This rule says that source code dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer circle. In particular, the name of something declared in an outer circle must not be mentioned by the code in the an inner circle. That includes, functions, classes. variables, or any other named software entity.</p>
-<p>Quoted from <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
-</blockquote>
-<p>This dependency rule leads to a very interesting consequence: If a use case interactor needs to access a component from an outer circle, e.g. retrieve data from a database, this must be done in a specific way in order to avoid breaking the dependency rule: In the use case layer we don’t have any knowledge about the components of the outer circles. <strong>If we require access to a database (or any other external resources), the call interface, as well as the data transfer protocol must be specified in the use case layer.</strong></p>
-<p>The components in the outer circles will then implement this interface. Using this kind of interfaces, it is possible to communicate accross the layer boundaries, but still maintain a strict separation of concerns.</p>
-<p>If you want to dive deeper into clean architecture I recommend the <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a> as an entry point. Robert C. Martin later also published a whole book <a href="https://www.amazon.com/Clean-Architecture-Craftsmans-Software-Structure/dp/0134494164">Clean Architecture: A Craftsman’s Guide to Software Structure and Design</a> on this concept.</p>
-<p>In the following sections I’ll explain how the clean architecture guidelines can be implemented in a Haskell REST API application by making use of the algebraic effect library <a href="https://github.com/polysemy-research/polysemy#readme">Polysemy</a>.</p>
-<h2 id="the-domain-layer">The Domain layer</h2>
-<p>The <a href="src/Domain/ReservationDomain.hs">ReservationDomain</a> module implements the business logic for seat reservations in a very small boutique restaurant. The restaurant has only one big table with 20 seats. Each day the restaurants accepts only 20 reservations. (There is no limited time-slot for each guest.)</p>
-<p>Please note:</p>
-<ul>
-<li><p>all functions in this module are <strong>pure</strong> (they don’t do any IO) and <strong>total</strong> (they produce defined results for all possible input values).</p></li>
-<li><p>The definitions in this module do not have dependencies to anything from the outer circles.</p></li>
-</ul>
-<p>At the core of our Domain lies the <code>Reservation</code> data type:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="co">-- | a data type representing a reservation</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Reservation</span> <span class="ot">=</span> <span class="dt">Reservation</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    {<span class="ot"> date     ::</span> <span class="dt">Day</span>    <span class="co">-- ^ the date of the reservation</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>    ,<span class="ot"> name     ::</span> <span class="dt">String</span> <span class="co">-- ^ the name of the guest placing the reservation</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    ,<span class="ot"> email    ::</span> <span class="dt">String</span> <span class="co">-- ^ the email address of the guest</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    ,<span class="ot"> quantity ::</span> <span class="dt">Natural</span>    <span class="co">-- ^ how many seats are requested</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true"></a>    }</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true"></a>    <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Generic</span>, <span class="dt">Read</span>, <span class="dt">Show</span>)</span></code></pre></div>
-<p>This type can be used to express facts like <em>Mr. Miller reserved two seats on 2020-06-01, he can be reached via his email address: manfred@miller.com</em>:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a>reservation <span class="ot">=</span> <span class="dt">Reservation</span> {name <span class="ot">=</span> <span class="st">&quot;Mr. Miller&quot;</span>, quantity <span class="ot">=</span> <span class="dv">2</span>, date <span class="ot">=</span> <span class="fu">read</span> <span class="st">&quot;2020-06-01&quot;</span>, email <span class="ot">=</span> <span class="st">&quot;manfred@miller.com&quot;</span>}</span></code></pre></div>
-<p>All reservations of a specific day are represented as a list of reservations: <code>[Reservation]</code>.</p>
-<p>A <code>ReservationMap</code> is a map from <code>Day</code> to <code>[Reservation]</code>:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- | a key value map holding a list of reservations for any given day</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">ReservationMap</span> <span class="ot">=</span> <span class="dt">Map</span> <span class="dt">Day</span> [<span class="dt">Reservation</span>]</span></code></pre></div>
-<p>That is, we can keep track of all reservations by maintaining them in such a map:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a>fromList </span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>  [</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>    (</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>      <span class="dv">2020</span><span class="op">-</span><span class="dv">06</span><span class="op">-</span><span class="dv">01</span>,</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a>        [</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a>          <span class="dt">Reservation</span> {date <span class="ot">=</span> <span class="dv">2020</span><span class="op">-</span><span class="dv">06</span><span class="op">-</span><span class="dv">01</span>, name <span class="ot">=</span> <span class="st">&quot;Mr. Miller&quot;</span>, email <span class="ot">=</span> <span class="st">&quot;manfred@miller.com&quot;</span>, quantity <span class="ot">=</span> <span class="dv">2</span>}, </span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>          <span class="dt">Reservation</span> {date <span class="ot">=</span> <span class="dv">2020</span><span class="op">-</span><span class="dv">06</span><span class="op">-</span><span class="dv">01</span>, name <span class="ot">=</span> <span class="st">&quot;Andrew M. Jones&quot;</span>, email <span class="ot">=</span> <span class="st">&quot;amjones@example.com&quot;</span>, quantity <span class="ot">=</span> <span class="dv">4</span>}</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>        ]</span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a>    )</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a>  ]</span></code></pre></div>
-<p>Based on these data types we can define domain logic like computing the used capacity of a list of reservations:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="co">-- | computes the number of reserved seats for a list of reservations</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a><span class="ot">usedCapacity ::</span> [<span class="dt">Reservation</span>] <span class="ot">-&gt;</span> <span class="dt">Natural</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a>usedCapacity [] <span class="ot">=</span> <span class="dv">0</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a>usedCapacity (<span class="dt">Reservation</span> _ _ _ quantity <span class="op">:</span> rest) <span class="ot">=</span> quantity <span class="op">+</span> usedCapacity rest</span></code></pre></div>
-<p>Based on this we can compute the number of available seats (given a maximum capacity and a list of reservations):</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="co">-- | computes the number of available seats from a maximum capacity and a list of reservations.</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a><span class="ot">availableSeats ::</span> <span class="dt">Natural</span><span class="ot">-&gt;</span> [<span class="dt">Reservation</span>] <span class="ot">-&gt;</span> <span class="dt">Natural</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>availableSeats maxCapacity reservations <span class="ot">=</span> maxCapacity <span class="op">-</span> usedCapacity reservations</span></code></pre></div>
-<p>The <code>Reservation</code> data type and some of the domain logic functions are depicted in the in the following diagram:</p>
-<figure>
-<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/domain.png" alt="" /><figcaption>The Domain layer</figcaption>
-</figure>
-<h3 id="testing-the-domain-layer">Testing the domain layer</h3>
-<p>As already mentioned: this layer has no knowledge of the world and it’s all pure code. Testing domain logic in isolation therefore is straight forward, as you can see from the <a href="test/DomainSpec.hs">DomainSpec</a> code.</p>
-<p>The data types and functions of the domain layer can be used directly, without any mocking of components:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a>day <span class="ot">=</span> fromGregorian <span class="dv">2020</span> <span class="dv">1</span> <span class="dv">29</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>res1 <span class="ot">=</span> <span class="dt">Reservation</span> day <span class="st">&quot;Andrew M. Jones&quot;</span> <span class="st">&quot;amjones@example.com&quot;</span> <span class="dv">4</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>res2 <span class="ot">=</span> <span class="dt">Reservation</span> day <span class="st">&quot;Thomas Miller&quot;</span> <span class="st">&quot;tm@example.com&quot;</span> <span class="dv">3</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>reservations <span class="ot">=</span> [res1, res2]</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>totalCapacity <span class="ot">=</span> <span class="dv">20</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true"></a></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true"></a>  describe <span class="st">&quot;Domain Logic&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true"></a>    it <span class="st">&quot;computes the used capacity for an empty list of reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true"></a>      usedCapacity [] <span class="ot">`shouldBe`</span> <span class="dv">0</span></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true"></a></span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true"></a>    it <span class="st">&quot;computes the used capacity for a list of reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true"></a>      usedCapacity [res1, res2] <span class="ot">`shouldBe`</span> <span class="dv">7</span></span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true"></a>      </span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true"></a>    it <span class="st">&quot;computes the available seats for a list of reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true"></a>      availableSeats totalCapacity [res1, res2] <span class="ot">`shouldBe`</span> <span class="dv">13</span></span></code></pre></div>
-<h2 id="the-use-case-layer">The Use Case layer</h2>
-<blockquote>
-<p>The software in this layer contains application specific business rules. It encapsulates and implements all of the use cases of the system. These <strong>use cases orchestrate the flow of data to and from the entities, and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.</strong></p>
-<p>Quoted from the <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
-</blockquote>
-<p>The module <a href="src/UseCases/ReservationUseCase.hs">ReservationUseCase</a> specifies the available use cases for the reservation system. It coordinates access to Effects and the actual domain logic. The module exposes service functions that will be used by the REST API in the ExternalInterfaces layer.</p>
-<p>Implemented Use Cases:</p>
-<ol type="1">
-<li><p>Display the number of available seats for a given day</p></li>
-<li><p>Enter a reservation for a given day and keep it persistent. If the reservation can not be served as all seats are occupies provide a functional error message stating the issue.</p></li>
-<li><p>Display the list of reservations for a given day.</p></li>
-<li><p>Delete a given reservation from the system in case of a cancellation. NO functional error is required if the reservation is not present in the system.</p></li>
-<li><p>Display a List of all reservation in the system.</p></li>
-</ol>
-<p>In the Use Case layer we have left the garden Eden of <em>world agnostic</em> code:</p>
-<p>In order to compute the number of available seats for a given day, we will have to first look up the actual reservations for that day from a persistent storage, and only then can we call the domain function <code>availableSeats</code>. In addition we also will have to write a Log message when calling the functions to provide an audit trail.</p>
-<p><strong>However, the dependency rule of clean architecture bans all direct access to a database or a logging-infrastructure from the use case layer!</strong></p>
-<h3 id="how-can-we-define-such-a-use-case-without-violating-the-dependency-rule">How can we define such a use case without violating the dependency rule?</h3>
-<p>Algebraic Effect systems offer a consistent answer: 1. We <strong>declare effects</strong> in the use case layer by defining them as an abstract interface.</p>
-<ol start="2" type="1">
-<li><p>We also specify the actual <strong>usage of effects</strong> in the use case layer by having calls against the abstract interface.</p></li>
-<li><p>We provide an <strong>interpretation</strong> of these effects only in the outer layers. This also allows us to provide different implementations. So we can easily swap backends, e.g. migrating from MySQL to PostgreSQL, and it can be used to provide mock implementations for testing purposes.</p></li>
-</ol>
-<p>Let’s see how all this looks like when using Polysemy.</p>
-<h3 id="usage-of-effects">Usage of effects</h3>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | compute the number of available seats for a given day. the result must be a natural number, incl. 0</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="ot">availableSeats ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Day</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r <span class="dt">Natural</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>availableSeats day <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;compute available seats for &quot;</span> <span class="op">++</span> <span class="fu">show</span> day</span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>  todaysReservations <span class="ot">&lt;-</span> fetch day</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>  <span class="fu">return</span> <span class="op">$</span> Dom.availableSeats maxCapacity todaysReservations</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a><span class="co">-- | fetch the list of reservations for a given day from the key value store.</span></span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a><span class="co">--   If no match is found, an empty list is returned.</span></span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a><span class="ot">fetch ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Day</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r [<span class="dt">Dom.Reservation</span>]</span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true"></a>fetch day <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;fetch reservations for &quot;</span> <span class="op">++</span> <span class="fu">show</span> day</span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true"></a>  maybeList <span class="ot">&lt;-</span> getKvs day</span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true"></a>  <span class="fu">return</span> <span class="op">$</span> fromMaybe [] maybeList</span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true"></a></span>
-<span id="cb8-16"><a href="#cb8-16" aria-hidden="true"></a><span class="co">-- | the maximum capacity of the restaurant.</span></span>
-<span id="cb8-17"><a href="#cb8-17" aria-hidden="true"></a><span class="ot">maxCapacity ::</span> <span class="dt">Natural</span></span>
-<span id="cb8-18"><a href="#cb8-18" aria-hidden="true"></a>maxCapacity <span class="ot">=</span> <span class="dv">20</span></span></code></pre></div>
-<p>The type signature of <code>availableSeats</code> contains two constraints on the <em>effect stack</em> type <code>r</code>: <code>(Member Persistence r, Member Trace r)</code> This means that the function may perform two different effects: persistence via the <code>Persistence</code> effect and Logging via the <code>Trace</code> effect.</p>
-<p>The type signature also specifies that we need an input of type <code>Day</code> and will return the <code>Natural</code> result wrapped in the <code>Sem r</code> monad.</p>
-<p>The <code>Sem</code> monad handles computations of arbitrary extensible effects. A value of type <code>Sem r</code> describes a program with the capabilities of the effect stack <code>r</code>.</p>
-<p>The first step of the function body of <code>availableSeats</code> specifies a Log action based on the (Polysemy built-in) <code>Trace</code> effect:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;compute available seats for &quot;</span> <span class="op">++</span> <span class="fu">show</span> day</span></code></pre></div>
-<p>I repeat: <code>trace</code> does not directly do any logging. The actual logging action - the effect interpretation - will be defined in the application assembly or in a test setup.</p>
-<p>The next line specifies a lookup of the reservation list for <code>day</code> from the persistence layer:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a>  todaysReservations <span class="ot">&lt;-</span> fetch day</span></code></pre></div>
-<p>where fetch is defined as:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="ot">fetch ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Day</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r [<span class="dt">Dom.Reservation</span>]</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>fetch day <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;fetch reservations for &quot;</span> <span class="op">++</span> <span class="fu">show</span> day</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>  maybeList <span class="ot">&lt;-</span> getKvs day</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>  <span class="fu">return</span> <span class="op">$</span> fromMaybe [] maybeList</span></code></pre></div>
-<h3 id="declaration-of-effects">Declaration of effects</h3>
-<p>To understand the <code>fetch</code> function, in particular the expression <code>maybeList &lt;- getKvs day</code> we first have to know the definition of the <code>Persistence</code> effect:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">Persistence</span> <span class="ot">=</span> <span class="dt">KVS</span> <span class="dt">Day</span> [<span class="dt">Dom.Reservation</span>]</span></code></pre></div>
-<p>Where KVS (standing for Key/Value Store) is a type that is also defined in the use case layer (<a href="src/UseCases/KVS.hs">KVS.hs</a>):</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="co">-- | a key value store specified as a GADT</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">KVS</span> k v m a <span class="kw">where</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>  <span class="dt">ListAllKvs</span><span class="ot"> ::</span> <span class="dt">KVS</span> k v m [(k, v)]</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true"></a>  <span class="dt">GetKvs</span><span class="ot">     ::</span> k <span class="ot">-&gt;</span> <span class="dt">KVS</span> k v m (<span class="dt">Maybe</span> v)</span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true"></a>  <span class="dt">InsertKvs</span><span class="ot">  ::</span> k <span class="ot">-&gt;</span> v <span class="ot">-&gt;</span> <span class="dt">KVS</span> k v m ()</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true"></a>  <span class="dt">DeleteKvs</span><span class="ot">  ::</span> k <span class="ot">-&gt;</span> <span class="dt">KVS</span> k v m ()</span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true"></a></span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true"></a>makeSem &#39;<span class="dt">&#39;KVS</span></span></code></pre></div>
-<p>The four operations of the key value store are defined in the GADT as type constructors. <code>makeSem ''KVS</code> then uses TemplateHaskell to generate effect functions (or smart Constructors) from the GADT definition. This call results in the definition of the following four functions that represent the specific operations of the key value store:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a><span class="ot">listAllKvs ::</span> <span class="dt">Member</span> (<span class="dt">KVS</span> k v) r <span class="ot">=&gt;</span> <span class="dt">Sem</span> r [(k, v)]</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true"></a><span class="ot">getKvs     ::</span> <span class="dt">Member</span> (<span class="dt">KVS</span> k v) r <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r (<span class="dt">Maybe</span> v)</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true"></a><span class="ot">insertKvs  ::</span> <span class="dt">Member</span> (<span class="dt">KVS</span> k v) r <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> v <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true"></a><span class="ot">deleteKvs  ::</span> <span class="dt">Member</span> (<span class="dt">KVS</span> k v) r <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span></code></pre></div>
-<p>These functions can be used in the <code>Sem</code> Monad. So now we understand much better what is going on in <code>fetch</code>:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a><span class="ot">fetch ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Day</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r [<span class="dt">Dom.Reservation</span>]</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a>fetch day <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;fetch reservations for &quot;</span> <span class="op">++</span> <span class="fu">show</span> day</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true"></a>  maybeList <span class="ot">&lt;-</span> getKvs day</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true"></a>  <span class="fu">return</span> <span class="op">$</span> fromMaybe [] maybeList</span></code></pre></div>
-<p>As <code>fetch</code> operates in the <code>Sem</code> monad, <code>maybeList</code> is bound to a <code>Maybe [Dom.Reservation]</code> value, which results from the <code>getKVs day</code> action. The function finally uses <code>fromMaybe</code> to return a list of reservations that were retrieved (or <code>[]</code> in case <code>Nothing</code> was found for <code>day</code>).</p>
-<p>Then, back in <code>availableSeats</code> we call the domain logic function <code>Dom.availableSeats</code> to compute the number of available seats. The resulting <code>Natural</code> value is lifted into the <code>Sem r</code> monad, thus matching the signature of the return type <code>Sem r Natural</code>.</p>
-<p>In the next diagram I’m depicting the layers Use Cases and Domain. The arrow from Use Cases to Domain represents the dependency rule: use case code may only reference domain logic but the domain logic may not reference anything from the use case layer.</p>
-<p>On the left side of the diagram we see the use case controllers (aka <em>use case interactors</em>) like <code>availableSeats</code> that coordinate all activities and resources to fulfill a specific use case.</p>
-<p>On the right we see the gateway (or interface) code like the <code>KVS</code> abstraction of a key-value store or the <code>fetch</code> operation that wraps the access to the key-value store.</p>
-<figure>
-<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/use-cases.png" alt="" /><figcaption>Use Cases layer</figcaption>
-</figure>
-<h3 id="interpretation-of-effects-testing">Interpretation of effects / Testing</h3>
-<p>The key value store functions like <code>getKvs</code> don’t perform any concrete operation. They just <code>declare</code> access to an abstract key-value store interface.</p>
-<p>The concrete interpretation of these calls will be specified in the application assembly (typically in <code>Main.hs</code>) or in the setup code of test cases. If we provide a <em>pure</em> interpretation then the resulting code will also be pure. This allows writing tests in the same pure way as for the domain logic.</p>
-<p>As an example, in <a href="test/UseCasePureSpec.hs">UseCasePureSpec</a> I’m providing pure interpretations for all effects.</p>
-<p>The <code>runPure</code> function takes a program with effects and handles each effect till it gets reduced to <code>Either ReservationError (ReservationMap‚ a)</code>:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="ot">runPure ::</span> <span class="dt">ReservationMap</span> </span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a>        <span class="ot">-&gt;</span> <span class="dt">Sem</span> &#39;[<span class="dt">UC.Persistence</span>, <span class="dt">State</span> <span class="dt">ReservationMap</span>, <span class="dt">Error</span> <span class="dt">UC.ReservationError</span>, <span class="dt">Trace</span>] a </span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true"></a>        <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">UC.ReservationError</span> (<span class="dt">ReservationMap</span>, a)</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true"></a>runPure kvsMap program <span class="ot">=</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true"></a>  program</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true"></a>     <span class="op">&amp;</span> runKvsPure kvsMap              <span class="co">-- run the key-value store on a simple ReservationMap</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true"></a>     <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">UC.ReservationError</span>  <span class="co">-- run error handling to produce an Either UC.ReservationError (ReservationMap, a)</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true"></a>     <span class="op">&amp;</span> ignoreTrace                    <span class="co">-- run Trace by simply ignoring all messages </span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true"></a>     <span class="op">&amp;</span> run                            <span class="co">-- run a &#39;Sem&#39; containing no effects as a pure value</span></span></code></pre></div>
-<p>In addition to that I’m providing wrapping functions like <code>runAvailableSeats</code> that use <code>runPure</code> to interprete the effects of the use case functions (eg. <code>UC.availableSeats</code>) and extract the actual result from the <code>[Either UC.ReservationError (ReservationMap, a)]</code> return value:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true"></a><span class="ot">runAvailableSeats ::</span> <span class="dt">ReservationMap</span> <span class="ot">-&gt;</span> <span class="dt">Day</span> <span class="ot">-&gt;</span> <span class="dt">Natural</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true"></a>runAvailableSeats kvsMap day <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true"></a>  <span class="kw">case</span> runPure kvsMap (UC.availableSeats day) <span class="kw">of</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true"></a>    <span class="dt">Right</span> (_, numSeats) <span class="ot">-&gt;</span> numSeats</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true"></a>    <span class="dt">Left</span> err            <span class="ot">-&gt;</span> <span class="fu">error</span> <span class="st">&quot;availableSeats failed&quot;</span></span></code></pre></div>
-<p>This is all that it takes to abstract away persistence layer, logging facility and exception handling. We can now write tests in pure code:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true"></a><span class="co">-- setting up test fixtures</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true"></a><span class="ot">initReservations ::</span> <span class="dt">ReservationMap</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true"></a>initReservations <span class="ot">=</span> M.singleton day res</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true"></a></span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true"></a>day <span class="ot">=</span> <span class="fu">read</span> <span class="st">&quot;2020-05-02&quot;</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true"></a>res <span class="ot">=</span> [<span class="dt">Reservation</span> day <span class="st">&quot;Andrew M. Jones&quot;</span> <span class="st">&quot;amjones@example.com&quot;</span> <span class="dv">4</span>]</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true"></a></span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true"></a>  describe <span class="st">&quot;Reservation Use Case (only pure code)&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true"></a>  </span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true"></a>    it <span class="st">&quot;computes the number of available seats for a given day&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb18-13"><a href="#cb18-13" aria-hidden="true"></a>      (runAvailableSeats initReservations day) <span class="ot">`shouldBe`</span> <span class="dv">16</span></span></code></pre></div>
-<h2 id="the-interface-adapters-layer">The Interface Adapters layer</h2>
-<p>This layer holds code for adapters to external resources like databases, message queues, configuration, Logging, etc.</p>
-<p>The Logging effect <code>Trace</code> ships with Polysemy, so we don’t have to implement anything here. (Of course we could overzealously implement our own Graylog adapter here, but I leave this as an exercise for the reader… )</p>
-<p>However, as the <code>KVS</code> type is our own invention we’ll have to provide our own implementations. (We could have used the <code>KVStore</code> type from <a href="https://hackage.haskell.org/package/polysemy-zoo-0.7.0.0/docs/Polysemy-KVStore.html">polysemy-zoo</a>, but for didactic purposes we will roll our own.)</p>
-<p>The following code is the in-memory implementation from the <a href="src/InterfaceAdapters/KVSInMemory.hs">KVSInMemory</a> module. It defines a key-value store in terms of <code>State (Map k v)</code> that is a <code>Map k v</code> in a <code>State</code> effect context:</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true"></a><span class="ot">runKvsOnMapState ::</span> ( <span class="dt">Member</span> (<span class="dt">State</span> (<span class="dt">M.Map</span> k v)) r, <span class="dt">Ord</span> k) </span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true"></a>                 <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a </span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true"></a>                 <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true"></a>runKvsOnMapState <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true"></a>  <span class="dt">ListAllKvs</span>    <span class="ot">-&gt;</span> <span class="fu">fmap</span> M.toList get</span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true"></a>  <span class="dt">GetKvs</span> k      <span class="ot">-&gt;</span> <span class="fu">fmap</span> (M.lookup k) get</span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true"></a>  <span class="dt">InsertKvs</span> k v <span class="ot">-&gt;</span> modify <span class="op">$</span> M.insert k v</span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true"></a>  <span class="dt">DeleteKvs</span> k   <span class="ot">-&gt;</span> modify <span class="op">$</span> M.delete k</span></code></pre></div>
-<p>So whenever the <code>interpret</code> functions detects a <code>GetKvs k</code> value, that was constructed by a call to <code>getKvs k</code> in the use case layer, it pattern-matches it to a <code>Map</code> lookup of <code>k</code> that is executed against state retrieved by <code>get</code>.</p>
-<p>Interestingly <code>get</code> is a smart constructor of the <code>State</code> effect. This means that by interpreting the <code>KVS</code> we have created new effects that in turn have to be interpreted.</p>
-<p>The <code>runKvsPure</code> functions (which we already have seen in the use case testing) chains interpretation of the effects <code>KVS</code> and <code>State</code> and thus allows us to work with pure Maps as mocks for a key-value store:</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true"></a><span class="ot">runKvsPure ::</span> <span class="dt">Ord</span> k </span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true"></a>           <span class="ot">=&gt;</span> <span class="dt">M.Map</span> k v</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true"></a>           <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> <span class="dt">State</span> (<span class="dt">M.Map</span> k v) <span class="op">:</span> r) a </span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true"></a>           <span class="ot">-&gt;</span> <span class="dt">Sem</span> r (<span class="dt">M.Map</span> k v, a)</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true"></a>runKvsPure <span class="fu">map</span> <span class="ot">=</span> runState <span class="fu">map</span> <span class="op">.</span> runKvsOnMapState</span></code></pre></div>
-<h3 id="a-key-value-store-with-a-sqlite-backend.">A key-value store with a SQLite backend.</h3>
-<p>As we are in the interface adapters layer, we are allowed to get our hands dirty with <em>real world code</em>, like database access. As an example I have provided a SQLite based interpretation of the <code>KVS</code> effect in <a href="src/InterfaceAdapters/KVSSqlite.hs">KVSSqllite.hs</a>.</p>
-<p>The effect interpreting function is <code>runKvsAsSQLite</code>:</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true"></a><span class="co">-- | Run a KVStore effect against a SQLite backend. Requires a Config object as input.</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true"></a><span class="ot">runKvsAsSQLite ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true"></a>                   <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true"></a>                   <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true"></a>runKvsAsSQLite <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true"></a>  <span class="dt">GetKvs</span> k      <span class="ot">-&gt;</span> getAction k</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true"></a>  <span class="dt">ListAllKvs</span>    <span class="ot">-&gt;</span> listAction</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true"></a>  <span class="dt">InsertKvs</span> k v <span class="ot">-&gt;</span> insertAction k v</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true"></a>  <span class="dt">DeleteKvs</span> k   <span class="ot">-&gt;</span> deleteAction k</span></code></pre></div>
-<p>The function’s type signature introduces a two more constraints on the effect stack type <code>r</code>: <code>Member (Embed IO) r</code> and <code>Member (Input Config) r</code>. <code>(Embed IO)</code> is needed as accessing SQLite will require IO, which can be lifted into the <code>Sem r</code> monad with <code>Embed IO</code>.</p>
-<p>SQLite always needs a file name to create a database connection. As we want to be able to keep this name configurable, we use the <code>(Input Config)</code> effect. <code>Config</code> is a data type that I created to represent global application configuration, including the database file name. <code>Input</code> is a Polysemy built-in effect which can provide input to an application, quite similar to a <code>Reader</code> monad.</p>
-<p>These effects are introduced by the actual implementations of the <code>KVS</code> constructors, like <code>getAction k</code>, which retrieves a value from the database by looking up the key <code>k</code>:</p>
-<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true"></a><span class="ot">getAction ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v) <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r (<span class="dt">Maybe</span> v)</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true"></a>getAction key <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true"></a>  conn <span class="ot">&lt;-</span> connectionFrom input</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true"></a>  rows <span class="ot">&lt;-</span> embed (SQL.queryNamed conn</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true"></a>                      <span class="st">&quot;SELECT key, value FROM store WHERE key = :key&quot;</span></span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true"></a>                      [<span class="st">&quot;:key&quot;</span> <span class="op">:=</span> <span class="fu">show</span> key]<span class="ot"> ::</span> <span class="dt">IO</span> [<span class="dt">KeyValueRow</span>])</span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;get: &quot;</span> <span class="op">++</span> <span class="fu">show</span> rows</span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true"></a>  <span class="kw">case</span> rows <span class="kw">of</span></span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true"></a>    []                          <span class="ot">-&gt;</span> <span class="fu">return</span> <span class="dt">Nothing</span></span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true"></a>    (<span class="dt">KeyValueRow</span> _key value)<span class="op">:</span>xs <span class="ot">-&gt;</span> <span class="fu">return</span> <span class="op">$</span> (decode <span class="op">.</span> encodeUtf8) value</span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true"></a></span>
-<span id="cb22-12"><a href="#cb22-12" aria-hidden="true"></a><span class="co">-- | create a connection based on configuration data, make sure table &quot;store&quot; exists.</span></span>
-<span id="cb22-13"><a href="#cb22-13" aria-hidden="true"></a><span class="ot">connectionFrom ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> r <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r <span class="dt">SQL.Connection</span></span>
-<span id="cb22-14"><a href="#cb22-14" aria-hidden="true"></a>connectionFrom c <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb22-15"><a href="#cb22-15" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> c</span>
-<span id="cb22-16"><a href="#cb22-16" aria-hidden="true"></a>  embed (getConnection (dbPath config))</span>
-<span id="cb22-17"><a href="#cb22-17" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb22-18"><a href="#cb22-18" aria-hidden="true"></a><span class="ot">      getConnection ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">SQL.Connection</span></span>
-<span id="cb22-19"><a href="#cb22-19" aria-hidden="true"></a>      getConnection dbFile <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb22-20"><a href="#cb22-20" aria-hidden="true"></a>        conn <span class="ot">&lt;-</span> SQL.open dbFile</span>
-<span id="cb22-21"><a href="#cb22-21" aria-hidden="true"></a>        SQL.execute_ conn <span class="st">&quot;CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT)&quot;</span></span>
-<span id="cb22-22"><a href="#cb22-22" aria-hidden="true"></a>        <span class="fu">return</span> conn</span></code></pre></div>
-<p>Let’s have a closer look at what is going on in <code>getAction</code>:</p>
-<p>First <code>connectionFrom input</code> is used to create a database connection based on the <code>Config</code> object obtained by <code>input</code> (the smart Constructor of the <code>Input</code> effect). The <code>Config</code> type contains a field <code>dbPath</code> which is read and used to create the connection with <code>getConnection</code>. As this is an IO operation we have to use <code>embed</code> to lift it into the <code>Sem r</code> monad.</p>
-<p>In the second step <code>SQL.queryNamed</code> is used to perform the actual select statement against the db connection. Again <code>embed</code> must be used to lift this IO operation.</p>
-<p>Finally the resulting <code>[KeyValueRow]</code> list is pattern matched: if the list is empty <code>Nothing</code> is returned. Otherwise <code>Aeson.decode</code> is called to unmarshal a result value from the JSON data retrieved from the database.</p>
-<p>The JSON encoding and decoding to and from the DB is the reason for the <code>ToJSON v, FromJSON v</code> constraints on the value type <code>v</code>.</p>
-<p>This implementation is inspired by key-value store of <a href="https://haskell-explained.gitlab.io/blog/posts/2019/07/31/polysemy-is-cool-part-2/index.html">a password manager in Polysemy</a>.</p>
-<h3 id="declaring-the-rest-api">Declaring the REST API</h3>
-<p>Our task was to build the backend for the reservation system. We will have to implement a REST API to allow access to the business logic that we defined in the use case layer.</p>
-<p>The overall idea is to provide a REST route for all exposed functions of the <code>ReservationUseCase</code>. The following table shows the mapping of those functions to the REST routes that we want to achieve:</p>
-<pre><code>listAll        GET    /reservations
-fetch          GET    /reservations/YYYY-MM-DD
-tryReservation POST   /reservations
-cancel         DELETE /reservations
-availableSeats GET    /seats/YYYY-MM-DD</code></pre>
-<p>I’m using <a href="http://www.servant.dev/">Servant</a> to define our REST API. The great thing about Servant is that it allows us to define REST APIs in a typesafe manner by using a type level DSL.</p>
-<p>Here comes the declaration of our API (please note that we declare our routes to accept and emit data in JSON format):</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a><span class="co">-- | in order to allow JSON serialization for the Dom.Reservation type, it must instantiate FromJSON and ToJSON.</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">ToJSON</span> <span class="dt">Dom.Reservation</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">FromJSON</span> <span class="dt">Dom.Reservation</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true"></a></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true"></a><span class="co">-- | Declaring the routes of the REST API for Restaurant Reservations</span></span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">ReservationAPI</span> <span class="ot">=</span></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true"></a>       <span class="st">&quot;reservations&quot;</span> <span class="op">:&gt;</span> <span class="dt">Summary</span> <span class="st">&quot;retrieve a map of all reservations (Day -&gt; [Reservation])&quot;</span></span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Get</span>     &#39;[ <span class="dt">JSON</span>] <span class="dt">Dom.ReservationMap</span> <span class="co">-- GET    /reservations</span></span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true"></a></span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span> <span class="st">&quot;reservations&quot;</span> <span class="op">:&gt;</span> <span class="dt">Summary</span> <span class="st">&quot;retrieve list of reservations for a given day&quot;</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Capture</span> <span class="st">&quot;day&quot;</span> <span class="dt">Day</span></span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Get</span>     &#39;[ <span class="dt">JSON</span>] [<span class="dt">Dom.Reservation</span>]  <span class="co">-- GET    /reservations/YYYY-MM-DD</span></span>
-<span id="cb24-13"><a href="#cb24-13" aria-hidden="true"></a></span>
-<span id="cb24-14"><a href="#cb24-14" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span> <span class="st">&quot;reservations&quot;</span> <span class="op">:&gt;</span> <span class="dt">Summary</span> <span class="st">&quot;place a new reservation&quot;</span></span>
-<span id="cb24-15"><a href="#cb24-15" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">ReqBody</span> &#39;[ <span class="dt">JSON</span>] <span class="dt">Dom.Reservation</span></span>
-<span id="cb24-16"><a href="#cb24-16" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Post</span>    &#39;[ <span class="dt">JSON</span>] ()                 <span class="co">-- POST   /reservations</span></span>
-<span id="cb24-17"><a href="#cb24-17" aria-hidden="true"></a></span>
-<span id="cb24-18"><a href="#cb24-18" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span> <span class="st">&quot;reservations&quot;</span> <span class="op">:&gt;</span> <span class="dt">Summary</span> <span class="st">&quot;cancel a reservation&quot;</span></span>
-<span id="cb24-19"><a href="#cb24-19" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">ReqBody</span> &#39;[ <span class="dt">JSON</span>] <span class="dt">Dom.Reservation</span></span>
-<span id="cb24-20"><a href="#cb24-20" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Delete</span>  &#39;[ <span class="dt">JSON</span>] ()                 <span class="co">-- DELETE /reservations</span></span>
-<span id="cb24-21"><a href="#cb24-21" aria-hidden="true"></a>                      </span>
-<span id="cb24-22"><a href="#cb24-22" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span> <span class="st">&quot;seats&quot;</span>        <span class="op">:&gt;</span> <span class="dt">Summary</span> <span class="st">&quot;retrieve number of free seats for a given day&quot;</span></span>
-<span id="cb24-23"><a href="#cb24-23" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Capture</span> <span class="st">&quot;day&quot;</span> <span class="dt">Day</span></span>
-<span id="cb24-24"><a href="#cb24-24" aria-hidden="true"></a>                      <span class="op">:&gt;</span> <span class="dt">Get</span>     &#39;[ <span class="dt">JSON</span>] <span class="dt">Natural</span>                <span class="co">-- GET    /seats/YYYY-MM-DD</span></span></code></pre></div>
-<p>Next we have to create the connection between the declared routes and the actual business logic. This will be our REST service implementation. In our case we simply delegate to the use case controller functions. Off course, we might also implement additional functionality here like validation:</p>
-<div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">UseCases.ReservationUseCase</span> <span class="kw">as</span> <span class="dt">UC</span> </span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true"></a></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true"></a><span class="co">-- | implements the ReservationAPI</span></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true"></a><span class="ot">reservationServer ::</span> (<span class="dt">Member</span> <span class="dt">UC.Persistence</span> r, <span class="dt">Member</span> (<span class="dt">Error</span> <span class="dt">UC.ReservationError</span>) r, </span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true"></a>                      <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r) <span class="ot">=&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> (<span class="dt">Sem</span> r)</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true"></a>reservationServer <span class="ot">=</span></span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true"></a>        UC.listAll        <span class="co">-- GET    /reservations</span></span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span>  UC.fetch          <span class="co">-- GET    /reservations/YYYY-MM-DD</span></span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span>  UC.tryReservation <span class="co">-- POST   /reservations</span></span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span>  UC.cancel         <span class="co">-- DELETE /reservations</span></span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true"></a>  <span class="op">:&lt;|&gt;</span>  UC.availableSeats <span class="co">-- GET    /seats/YYYY-MM-DD</span></span></code></pre></div>
-<p>I really love how <strong>declarative</strong> this code is. <strong>We don’t have to tell how</strong> to exchange data between the REST server and the use case controllers.</p>
-<p>We <strong>just tell what we want</strong>: a mapping from the routes to the controller functions. That’s all!</p>
-<p>In the following diagram, we now see the third layer. Again, the arrow symbolises the dependency rule, which prohibits access from domain or use case layer to the interface adapters layer. To the left we see the <code>ReservationAPI</code> and its <code>reservationServer</code> implementation, which we just explored. They interact with the use case controller functions like <code>availableSeats</code>, <code>listAll</code>, etc.</p>
-<p>To the right we see the interpretations of the <code>KVS</code> effect (which was defined in the use case layer): <code>KVSInMemory</code>, <code>KVSSqlite</code> (and also two other implementastions <code>KVSFileServer</code> and <code>KVSAcidState</code>, which you will find in <a href="src/InterfaceAdapters/">the InterfaceAdapters package</a>).</p>
-<figure>
-<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/interface-adapters.png" alt="" /><figcaption>Interface Adapters layer</figcaption>
-</figure>
-<h3 id="testing-the-kvs-implementations">Testing the KVS implementations</h3>
-<p>We’ll have a closer look at the <a href="test/InterfaceAdaptersKVSSQLiteSpec.hs">test of the SQLite implementation</a> of the <code>KVS</code> effect.</p>
-<p>As Polysemy effects are involded we will need to provide an interpretation to actually perform the SQLLite operation.</p>
-<p>The test setup looks quite similar to the tests in the use case layer.</p>
-<p>We want our test to evaluate the KVS implementation independently of the domain logic and the use case layer. Therefore, we first define an example use case, featuring a data type <code>Memo</code> and a set of typical CRUD operations. The CRUD operations are using the <code>KVS</code> smart constructors and thus exhibit the typical Polysemy effect signatures:</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true"></a><span class="co">-- | a key value table mapping Natural to a list of Strings</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">KeyValueTable</span> <span class="ot">=</span> <span class="dt">KVS</span> <span class="dt">Int</span> [<span class="dt">String</span>]</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true"></a></span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Memo</span> <span class="ot">=</span> <span class="dt">Memo</span> <span class="dt">Int</span> [<span class="dt">String</span>]</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true"></a>    <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true"></a></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true"></a><span class="ot">persistMemo ::</span> (<span class="dt">Member</span> <span class="dt">KeyValueTable</span> r)  <span class="ot">=&gt;</span> <span class="dt">Memo</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true"></a>persistMemo (<span class="dt">Memo</span> <span class="fu">id</span> <span class="fu">lines</span> ) <span class="ot">=</span> insertKvs <span class="fu">id</span> <span class="fu">lines</span></span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true"></a></span>
-<span id="cb26-10"><a href="#cb26-10" aria-hidden="true"></a><span class="ot">fetchMemo ::</span> (<span class="dt">Member</span> <span class="dt">KeyValueTable</span> r) <span class="ot">=&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r (<span class="dt">Maybe</span> [<span class="dt">String</span>])</span>
-<span id="cb26-11"><a href="#cb26-11" aria-hidden="true"></a>fetchMemo <span class="ot">=</span> getKvs</span>
-<span id="cb26-12"><a href="#cb26-12" aria-hidden="true"></a></span>
-<span id="cb26-13"><a href="#cb26-13" aria-hidden="true"></a><span class="ot">fetchAll ::</span> (<span class="dt">Member</span> <span class="dt">KeyValueTable</span> r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> r (<span class="dt">M.Map</span> <span class="dt">Int</span> [<span class="dt">String</span>])</span>
-<span id="cb26-14"><a href="#cb26-14" aria-hidden="true"></a>fetchAll <span class="ot">=</span> <span class="fu">fmap</span> M.fromList listAllKvs</span>
-<span id="cb26-15"><a href="#cb26-15" aria-hidden="true"></a></span>
-<span id="cb26-16"><a href="#cb26-16" aria-hidden="true"></a><span class="ot">deleteMemo ::</span> (<span class="dt">Member</span> <span class="dt">KeyValueTable</span> r)  <span class="ot">=&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb26-17"><a href="#cb26-17" aria-hidden="true"></a>deleteMemo <span class="ot">=</span> deleteKvs</span></code></pre></div>
-<p>Next we define a set of helper functions that allow us to execute the CRUD operations as ordinary <code>IO ()</code> actions, which we can use in our test code:</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true"></a><span class="co">-- Helper functions for interpreting all effects in IO</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true"></a><span class="ot">runPersist ::</span> <span class="dt">Memo</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true"></a>runPersist memo <span class="ot">=</span> runAllEffects (persistMemo memo)</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true"></a></span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true"></a><span class="ot">runFetch ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Maybe</span> [<span class="dt">String</span>])</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true"></a>runFetch k <span class="ot">=</span> runAllEffects (fetchMemo k)</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true"></a></span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true"></a><span class="ot">runFetchAll ::</span> <span class="dt">IO</span> (<span class="dt">M.Map</span> <span class="dt">Int</span> [<span class="dt">String</span>])</span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true"></a>runFetchAll <span class="ot">=</span> runAllEffects fetchAll</span>
-<span id="cb27-10"><a href="#cb27-10" aria-hidden="true"></a></span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true"></a><span class="ot">runDelete ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true"></a>runDelete k <span class="ot">=</span> runAllEffects (deleteMemo k)</span></code></pre></div>
-<p>These wrapper function make use of the <code>runAllEffects</code> function that takes a program with effects and handles each effect till it gets reduced to <code>IO a</code>:</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true"></a><span class="ot">runAllEffects ::</span> <span class="dt">Sem</span> &#39;[<span class="dt">KeyValueTable</span>, <span class="dt">Input</span> <span class="dt">Config</span>, <span class="dt">Trace</span>, <span class="dt">Embed</span> <span class="dt">IO</span>] a <span class="ot">-&gt;</span> <span class="dt">IO</span> a </span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true"></a>runAllEffects program <span class="ot">=</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true"></a>  program</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true"></a>    <span class="op">&amp;</span> runKvsAsSQLite       <span class="co">-- use SQLite based interpretation of the (KVS Int [String]) effect</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runInputConst config <span class="co">-- use the variable config as source for (Input Config) effect</span></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true"></a>    <span class="op">&amp;</span> ignoreTrace          <span class="co">-- ignore all traces</span></span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true"></a>    <span class="op">&amp;</span> runM                 <span class="co">-- reduce Sem r (Embed IO a) to IO a</span></span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true"></a>  <span class="kw">where</span> config <span class="ot">=</span> <span class="dt">Config</span> {port <span class="ot">=</span> <span class="dv">8080</span>, dbPath <span class="ot">=</span> <span class="st">&quot;kvs-test.db&quot;</span>, backend <span class="ot">=</span> <span class="dt">SQLite</span>, verbose <span class="ot">=</span> <span class="dt">False</span>}</span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true"></a></span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true"></a><span class="co">-- errors are rethrown as Runtime errors, which can be verified by HSpec.</span></span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true"></a><span class="ot">handleErrors ::</span> <span class="dt">IO</span> (<span class="dt">Either</span> err a) <span class="ot">-&gt;</span> <span class="dt">IO</span> a</span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true"></a>handleErrors e <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb28-13"><a href="#cb28-13" aria-hidden="true"></a>  <span class="fu">either</span> <span class="ot">&lt;-</span> e</span>
-<span id="cb28-14"><a href="#cb28-14" aria-hidden="true"></a>  <span class="kw">case</span> <span class="fu">either</span> <span class="kw">of</span></span>
-<span id="cb28-15"><a href="#cb28-15" aria-hidden="true"></a>    <span class="dt">Right</span> v <span class="ot">-&gt;</span> <span class="fu">return</span> v</span>
-<span id="cb28-16"><a href="#cb28-16" aria-hidden="true"></a>    <span class="dt">Left</span> _  <span class="ot">-&gt;</span> <span class="fu">error</span> <span class="st">&quot;something bad happend&quot;</span></span></code></pre></div>
-<p>With these preliminaries at hand we can now write our test cases:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true"></a>key <span class="ot">=</span> <span class="dv">4711</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true"></a>text <span class="ot">=</span> [<span class="st">&quot;In the morning&quot;</span>, <span class="st">&quot;I don&#39;t drink coffee&quot;</span>, <span class="st">&quot;But lots of curcuma chai.&quot;</span>]</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true"></a>memo <span class="ot">=</span> <span class="dt">Memo</span> key text</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true"></a></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true"></a>  describe <span class="st">&quot;The KV Store SQLite Implementation&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true"></a>    it <span class="st">&quot;returns Nothing if nothing can be found for a given id&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true"></a>      maybeMatch <span class="ot">&lt;-</span> runFetch key</span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true"></a>      maybeMatch <span class="ot">`shouldBe`</span> <span class="dt">Nothing</span></span>
-<span id="cb29-11"><a href="#cb29-11" aria-hidden="true"></a></span>
-<span id="cb29-12"><a href="#cb29-12" aria-hidden="true"></a>    it <span class="st">&quot;persists a key-value pair to the SQLite database&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb29-13"><a href="#cb29-13" aria-hidden="true"></a>      runPersist memo</span>
-<span id="cb29-14"><a href="#cb29-14" aria-hidden="true"></a>      maybeMatch <span class="ot">&lt;-</span> runFetch key</span>
-<span id="cb29-15"><a href="#cb29-15" aria-hidden="true"></a>      maybeMatch <span class="ot">`shouldBe`</span> <span class="dt">Just</span> text</span>
-<span id="cb29-16"><a href="#cb29-16" aria-hidden="true"></a></span>
-<span id="cb29-17"><a href="#cb29-17" aria-hidden="true"></a>    it <span class="st">&quot;fetches a Map of all key-value entries from the KV store&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb29-18"><a href="#cb29-18" aria-hidden="true"></a>      <span class="fu">map</span> <span class="ot">&lt;-</span> runFetchAll</span>
-<span id="cb29-19"><a href="#cb29-19" aria-hidden="true"></a>      M.size <span class="fu">map</span> <span class="ot">`shouldBe`</span> <span class="dv">1</span></span>
-<span id="cb29-20"><a href="#cb29-20" aria-hidden="true"></a></span>
-<span id="cb29-21"><a href="#cb29-21" aria-hidden="true"></a>    it <span class="st">&quot;deletes an entry from the key value store&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb29-22"><a href="#cb29-22" aria-hidden="true"></a>      runDelete key</span>
-<span id="cb29-23"><a href="#cb29-23" aria-hidden="true"></a>      maybeMatch <span class="ot">&lt;-</span> runFetch key</span>
-<span id="cb29-24"><a href="#cb29-24" aria-hidden="true"></a>      maybeMatch <span class="ot">`shouldBe`</span> <span class="dt">Nothing</span></span></code></pre></div>
-<h3 id="testing-the-rest-api">Testing the REST API</h3>
-<p>The actual code for testing the REST API looks pretty straightforward. We create a <a href="https://hackage.haskell.org/package/wai">WAI</a> <code>Application</code> instance with <code>createApp</code> and execute REST operations like <code>get</code> and <code>postJSON</code> against it:</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true"></a><span class="ot">reservationData ::</span> <span class="dt">LB.ByteString</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true"></a>reservationData <span class="ot">=</span> <span class="st">&quot;{\&quot;email\&quot;:\&quot;amjones@example.com\&quot;,\&quot;quantity\&quot;:10,\&quot;date\&quot;:\&quot;2020-05-02\&quot;,\&quot;name\&quot;:\&quot;Amelia Jones\&quot;}&quot;</span></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true"></a></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true"></a>postJSON   path <span class="ot">=</span> request methodPost   path [(hContentType, <span class="st">&quot;application/json&quot;</span>)]</span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true"></a>deleteJSON path <span class="ot">=</span> request methodDelete path [(hContentType, <span class="st">&quot;application/json&quot;</span>)]</span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true"></a></span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb30-9"><a href="#cb30-9" aria-hidden="true"></a>  with (createApp) <span class="op">$</span></span>
-<span id="cb30-10"><a href="#cb30-10" aria-hidden="true"></a>    describe <span class="st">&quot;Rest Service&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb30-11"><a href="#cb30-11" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a call GET /reservations &quot;</span> <span class="op">$</span></span>
-<span id="cb30-12"><a href="#cb30-12" aria-hidden="true"></a>        get <span class="st">&quot;/reservations&quot;</span> <span class="ot">`shouldRespondWith`</span> <span class="st">&quot;{\&quot;2020-05-02\&quot;:[{\&quot;email\&quot;:\&quot;amjones@example.com\&quot;,\&quot;quantity\&quot;:4,\&quot;date\&quot;:\&quot;2020-05-02\&quot;,\&quot;name\&quot;:\&quot;Andrew M. Jones\&quot;}]}&quot;</span></span>
-<span id="cb30-13"><a href="#cb30-13" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a valid POST /reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb30-14"><a href="#cb30-14" aria-hidden="true"></a>        postJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="ot">`shouldRespondWith`</span> <span class="dv">200</span></span>
-<span id="cb30-15"><a href="#cb30-15" aria-hidden="true"></a>      it <span class="st">&quot;responds with 412 if a reservation can not be done on a given day&quot;</span> <span class="op">$</span></span>
-<span id="cb30-16"><a href="#cb30-16" aria-hidden="true"></a>        (postJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="op">&gt;&gt;</span> postJSON <span class="st">&quot;/reservations&quot;</span> reservationData) <span class="ot">`shouldRespondWith`</span> <span class="dv">412</span></span>
-<span id="cb30-17"><a href="#cb30-17" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a valid DELETE /reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb30-18"><a href="#cb30-18" aria-hidden="true"></a>        deleteJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="ot">`shouldRespondWith`</span> <span class="dv">200</span></span></code></pre></div>
-<p>Please note that these tests don’t need a deployment of the WAI application to a web server. ALl testing can be done within a single process. We stick to the dependency rule not to use anything from a more outward layer.</p>
-<p>The interesting part is the creation of the <code>Application</code> instance.</p>
-<p>If we had a simple implementation <code>myServer</code> of a REST API <code>myApi</code>, not using any Polysemy effects, we could create an <code>Application</code> instance like so:</p>
-<div class="sourceCode" id="cb31"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true"></a><span class="ot">createSimpleApp ::</span> <span class="dt">Application</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true"></a>createSimpleApp <span class="op">::=</span> serve myApi myServer</span></code></pre></div>
-<p>In contrast, our <code>reservationServer</code> has a type signature that contains Polysemy effects:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true"></a><span class="ot">reservationServer ::</span> (<span class="dt">Member</span> <span class="dt">UC.Persistence</span> r, <span class="dt">Member</span> (<span class="dt">Error</span> <span class="dt">UC.ReservationError</span>) r, </span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true"></a>                      <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r) <span class="ot">=&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> (<span class="dt">Sem</span> r)</span></code></pre></div>
-<p>Instead of building the <code>Application</code> instance directly, as in the simple example, we use <code>liftServer</code> to lift <code>reservationServer</code> into the required <code>ServerT ReservationAPI Handler</code> type by running all effects and by lifting the business logic exception <code>ReservationNotPossible</code> into a Servant <code>ServerError</code>. This time we also use the SQLite based interpretation of the <code>KVS</code> effect:</p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Application</span></span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true"></a>createApp config <span class="ot">=</span> <span class="fu">return</span> <span class="op">$</span> serve reservationAPI (liftServer config)</span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true"></a></span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true"></a><span class="ot">liftServer ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> <span class="dt">Handler</span></span>
-<span id="cb33-5"><a href="#cb33-5" aria-hidden="true"></a>liftServer config <span class="ot">=</span> hoistServer reservationAPI (interpretServer config) reservationServer</span>
-<span id="cb33-6"><a href="#cb33-6" aria-hidden="true"></a>  <span class="kw">where</span></span>
-<span id="cb33-7"><a href="#cb33-7" aria-hidden="true"></a>    interpretServer config sem <span class="ot">=</span></span>
-<span id="cb33-8"><a href="#cb33-8" aria-hidden="true"></a>      sem</span>
-<span id="cb33-9"><a href="#cb33-9" aria-hidden="true"></a>        <span class="op">&amp;</span> runKvsAsSQLite</span>
-<span id="cb33-10"><a href="#cb33-10" aria-hidden="true"></a>        <span class="op">&amp;</span> runInputConst config</span>
-<span id="cb33-11"><a href="#cb33-11" aria-hidden="true"></a>        <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
-<span id="cb33-12"><a href="#cb33-12" aria-hidden="true"></a>        <span class="op">&amp;</span> ignoreTrace</span>
-<span id="cb33-13"><a href="#cb33-13" aria-hidden="true"></a>        <span class="op">&amp;</span> runM</span>
-<span id="cb33-14"><a href="#cb33-14" aria-hidden="true"></a>        <span class="op">&amp;</span> liftToHandler</span>
-<span id="cb33-15"><a href="#cb33-15" aria-hidden="true"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> (<span class="fu">fmap</span> handleErrors)</span>
-<span id="cb33-16"><a href="#cb33-16" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 {errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
-<span id="cb33-17"><a href="#cb33-17" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
-<h2 id="the-external-interfaces-layer">The External Interfaces layer</h2>
-<blockquote>
-<p>The outermost layer is generally composed of frameworks and tools such as the Database, the Web Framework, etc. Generally you don’t write much code in this layer other than glue code that communicates to the next circle inwards.</p>
-<p>This layer is where all the details go. The Web is a detail. The database is a detail. We keep these things on the outside where they can do little harm.</p>
-<p>Quoted from <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
-</blockquote>
-<p>For the database we are already finished as the <a href="https://hackage.haskell.org/package/sqlite-simple">SQlite-Simple</a> library includes the SQLLite C runtime library and is thus self-contained.</p>
-<p>We will use <a href="http://www.aosabook.org/en/posa/warp.html">WARP</a> as our Web Server, which can be used as a library within our <code>Main</code> program. What we still have to do though, is to assemble a Servant web <code>Application</code> so that it can be executed on the warp server.</p>
-<p>We have done this step already for the testing of the REST service. The <code>createApp</code> function that we define in the <a href="src/ExternalInterfaces/ApplicationAssembly.hs">ApplicationAssembly module</a> will look quite familiar, it just provides some more bells and whistles to integrate all the features that we have developed so far.</p>
-<ul>
-<li><code>createApp</code> accepts a <code>Config</code> parameter which is used to configure application settings.</li>
-<li><code>selectKvsBackend</code> selects the concrete <code>KVS</code> interpretation.</li>
-<li><code>selectTraceVerbosity</code> selects the <code>Trace</code> interpretation:</li>
-</ul>
-<div class="sourceCode" id="cb34"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true"></a><span class="co">-- | creates the WAI Application that can be executed by Warp.run.</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Application</span></span>
-<span id="cb34-3"><a href="#cb34-3" aria-hidden="true"></a>createApp config <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb34-4"><a href="#cb34-4" aria-hidden="true"></a>  <span class="fu">return</span> (serve reservationAPI <span class="op">$</span> hoistServer reservationAPI (interpretServer config) reservationServer)</span>
-<span id="cb34-5"><a href="#cb34-5" aria-hidden="true"></a>  <span class="kw">where</span></span>
-<span id="cb34-6"><a href="#cb34-6" aria-hidden="true"></a>    interpretServer config sem  <span class="ot">=</span>  sem</span>
-<span id="cb34-7"><a href="#cb34-7" aria-hidden="true"></a>      <span class="op">&amp;</span> selectKvsBackend config</span>
-<span id="cb34-8"><a href="#cb34-8" aria-hidden="true"></a>      <span class="op">&amp;</span> runInputConst config</span>
-<span id="cb34-9"><a href="#cb34-9" aria-hidden="true"></a>      <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
-<span id="cb34-10"><a href="#cb34-10" aria-hidden="true"></a>      <span class="op">&amp;</span> selectTraceVerbosity config</span>
-<span id="cb34-11"><a href="#cb34-11" aria-hidden="true"></a>      <span class="op">&amp;</span> runM</span>
-<span id="cb34-12"><a href="#cb34-12" aria-hidden="true"></a>      <span class="op">&amp;</span> liftToHandler</span>
-<span id="cb34-13"><a href="#cb34-13" aria-hidden="true"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> (<span class="fu">fmap</span> handleErrors)</span>
-<span id="cb34-14"><a href="#cb34-14" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
-<span id="cb34-15"><a href="#cb34-15" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span>
-<span id="cb34-16"><a href="#cb34-16" aria-hidden="true"></a></span>
-<span id="cb34-17"><a href="#cb34-17" aria-hidden="true"></a><span class="co">-- | can select between SQLite or FileServer persistence backends.</span></span>
-<span id="cb34-18"><a href="#cb34-18" aria-hidden="true"></a><span class="ot">selectKvsBackend ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
-<span id="cb34-19"><a href="#cb34-19" aria-hidden="true"></a>                 <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb34-20"><a href="#cb34-20" aria-hidden="true"></a>selectKvsBackend config <span class="ot">=</span> <span class="kw">case</span> backend config <span class="kw">of</span></span>
-<span id="cb34-21"><a href="#cb34-21" aria-hidden="true"></a>  <span class="dt">SQLite</span>     <span class="ot">-&gt;</span> runKvsAsSQLite</span>
-<span id="cb34-22"><a href="#cb34-22" aria-hidden="true"></a>  <span class="dt">FileServer</span> <span class="ot">-&gt;</span> runKvsAsFileServer</span>
-<span id="cb34-23"><a href="#cb34-23" aria-hidden="true"></a>  <span class="dt">InMemory</span>   <span class="ot">-&gt;</span> <span class="fu">error</span> <span class="st">&quot;not supported&quot;</span></span>
-<span id="cb34-24"><a href="#cb34-24" aria-hidden="true"></a></span>
-<span id="cb34-25"><a href="#cb34-25" aria-hidden="true"></a><span class="co">-- | if the config flag verbose is set to True, trace to Console, else ignore all trace messages</span></span>
-<span id="cb34-26"><a href="#cb34-26" aria-hidden="true"></a><span class="ot">selectTraceVerbosity ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> (<span class="dt">Sem</span> (<span class="dt">Trace</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a)</span>
-<span id="cb34-27"><a href="#cb34-27" aria-hidden="true"></a>selectTraceVerbosity config <span class="ot">=</span></span>
-<span id="cb34-28"><a href="#cb34-28" aria-hidden="true"></a>  <span class="kw">if</span> verbose config</span>
-<span id="cb34-29"><a href="#cb34-29" aria-hidden="true"></a>    <span class="kw">then</span> traceToIO</span>
-<span id="cb34-30"><a href="#cb34-30" aria-hidden="true"></a>    <span class="kw">else</span> ignoreTrace</span></code></pre></div>
-<p>The application assembly also features a function to load a <code>Config</code> instance. Typically, this would involve loading a configuration file or reading command line arguments. We take a shortcut here and just provide a static instance:</p>
-<div class="sourceCode" id="cb35"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true"></a><span class="co">-- | load application config. In real life, this would load a config file or read commandline args.</span></span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true"></a><span class="ot">loadConfig ::</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true"></a>loadConfig <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Config</span> {port <span class="ot">=</span> <span class="dv">8080</span>, backend <span class="ot">=</span> <span class="dt">SQLite</span>, dbPath <span class="ot">=</span> <span class="st">&quot;kvs.db&quot;</span>, verbose <span class="ot">=</span> <span class="dt">True</span>}</span></code></pre></div>
-<p>With the whole application assembly written as library code, there is not much left to do in the <code>Main</code> module:</p>
-<div class="sourceCode" id="cb36"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">ExternalInterfaces.ApplicationAssembly</span> (createApp, loadConfig)</span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">InterfaceAdapters.Config</span></span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Network.Wai.Handler.Warp</span>               (run)</span>
-<span id="cb36-4"><a href="#cb36-4" aria-hidden="true"></a></span>
-<span id="cb36-5"><a href="#cb36-5" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb36-6"><a href="#cb36-6" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb36-7"><a href="#cb36-7" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig</span>
-<span id="cb36-8"><a href="#cb36-8" aria-hidden="true"></a>  app    <span class="ot">&lt;-</span> createApp config</span>
-<span id="cb36-9"><a href="#cb36-9" aria-hidden="true"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Starting server on port &quot;</span> <span class="op">++</span> <span class="fu">show</span> (port config)</span>
-<span id="cb36-10"><a href="#cb36-10" aria-hidden="true"></a>  run (port config) app</span></code></pre></div>
-<p>The following diagram shows the elements added by the External Interface layer:</p>
-<ul>
-<li>On the left we have application assembly code like <code>createApp</code> used by the <code>Warp</code> server or some of the different <code>runPure</code> functions that we used in HSpec tests.</li>
-<li>On the right we have the SQLite runtime library that provides access to the SQLite database and the Haskell runtime in general, which provides access to the filesystem and the OS in general.</li>
-</ul>
-<figure>
-<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/clean-architecture.png" alt="" /><figcaption>External Interfaces layer</figcaption>
-</figure>
-<h3 id="testing-the-application-assembly">Testing the application assembly</h3>
-<p>Testing the application assembly is quite straightforward and resembles the testing of the REST service:</p>
-<div class="sourceCode" id="cb37"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true"></a><span class="ot">loadConfig ::</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true"></a>loadConfig <span class="ot">=</span> <span class="fu">return</span> <span class="dt">Config</span> {port <span class="ot">=</span> <span class="dv">8080</span>, backend <span class="ot">=</span> <span class="dt">SQLite</span>, dbPath <span class="ot">=</span> <span class="st">&quot;kvs-assembly.db&quot;</span>, verbose <span class="ot">=</span> <span class="dt">False</span>}</span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true"></a></span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true"></a>  with (loadConfig <span class="op">&gt;&gt;=</span> createApp) <span class="op">$</span></span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true"></a>    describe <span class="st">&quot;Rest Service&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true"></a></span>
-<span id="cb37-9"><a href="#cb37-9" aria-hidden="true"></a>      it <span class="st">&quot;responds with 20 for a first call to GET /seats/YYYY-MM-DD&quot;</span> <span class="op">$</span></span>
-<span id="cb37-10"><a href="#cb37-10" aria-hidden="true"></a>        get <span class="st">&quot;/seats/2020-05-02&quot;</span> <span class="ot">`shouldRespondWith`</span> <span class="st">&quot;20&quot;</span></span>
-<span id="cb37-11"><a href="#cb37-11" aria-hidden="true"></a></span>
-<span id="cb37-12"><a href="#cb37-12" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a valid POST /reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb37-13"><a href="#cb37-13" aria-hidden="true"></a>        postJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="ot">`shouldRespondWith`</span> <span class="dv">200</span></span>
-<span id="cb37-14"><a href="#cb37-14" aria-hidden="true"></a></span>
-<span id="cb37-15"><a href="#cb37-15" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a call GET /reservations &quot;</span> <span class="op">$</span></span>
-<span id="cb37-16"><a href="#cb37-16" aria-hidden="true"></a>        get <span class="st">&quot;/reservations&quot;</span> <span class="ot">`shouldRespondWith`</span> <span class="st">&quot;{\&quot;2020-05-02\&quot;:[{\&quot;email\&quot;:\&quot;amjones@example.com\&quot;,\&quot;quantity\&quot;:12,\&quot;date\&quot;:\&quot;2020-05-02\&quot;,\&quot;name\&quot;:\&quot;Amelia Jones\&quot;}]}&quot;</span></span>
-<span id="cb37-17"><a href="#cb37-17" aria-hidden="true"></a></span>
-<span id="cb37-18"><a href="#cb37-18" aria-hidden="true"></a>      it <span class="st">&quot;responds with 412 if a reservation can not be done on a given day&quot;</span> <span class="op">$</span></span>
-<span id="cb37-19"><a href="#cb37-19" aria-hidden="true"></a>        (postJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="op">&gt;&gt;</span> postJSON <span class="st">&quot;/reservations&quot;</span> reservationData) <span class="ot">`shouldRespondWith`</span> <span class="dv">412</span></span>
-<span id="cb37-20"><a href="#cb37-20" aria-hidden="true"></a></span>
-<span id="cb37-21"><a href="#cb37-21" aria-hidden="true"></a>      it <span class="st">&quot;responds with 20 for a first call to GET /seats/YYYY-MM-DD&quot;</span> <span class="op">$</span></span>
-<span id="cb37-22"><a href="#cb37-22" aria-hidden="true"></a>        get <span class="st">&quot;/seats/2020-05-02&quot;</span> <span class="ot">`shouldRespondWith`</span> <span class="st">&quot;8&quot;</span></span>
-<span id="cb37-23"><a href="#cb37-23" aria-hidden="true"></a></span>
-<span id="cb37-24"><a href="#cb37-24" aria-hidden="true"></a>      it <span class="st">&quot;responds with 200 for a valid DELETE /reservations&quot;</span> <span class="op">$</span></span>
-<span id="cb37-25"><a href="#cb37-25" aria-hidden="true"></a>        deleteJSON <span class="st">&quot;/reservations&quot;</span> reservationData <span class="ot">`shouldRespondWith`</span> <span class="dv">200</span></span></code></pre></div>
-<h2 id="swagger-documentation">Swagger Documentation</h2>
-<p>For all those who have been patient enough to stay with me until here, I now have a little bonus.</p>
-<p>There is a <a href="https://github.com/haskell-servant/servant-swagger-ui">servant-swagger-ui addon</a> available which allows to serve a <a href="https://swagger.io/tools/swagger-ui/">SwaggerDoc UI</a> for any Servant API. This UI renders an automatically generated documentation of our Reservation API and even allows to test all API operations directly.</p>
-<p>You can launch it by executing <code>stack build --exec PolysemyCleanArchitecture</code> in the root folder of the project.</p>
-<p>This will launch the REST service and open up the Swagger UI in your Web browser:</p>
-<figure>
-<img src="https://github.com/thma/PolysemyCleanArchitecture/raw/master/swaggerUI.png" alt="" /><figcaption>Swagger UI</figcaption>
-</figure>
-<p>The code for this goody can be found in the <a href="app/SwaggerUI.hs">SwaggerUI</a> module.</p>
-<h2 id="conclusion">Conclusion</h2>
-<p>Robert C. Martin concludes his blog post with a brief summary:</p>
-<blockquote>
-<p>Conforming to these simple rules is not hard, and will save you a lot of headaches going forward. By separating the software into layers, and conforming to The Dependency Rule, you will create a system that is <strong>intrinsically testable</strong>, with all the benefits that implies. When any of the external parts of the system become obsolete, like the database, or the web framework, you can <strong>replace those obsolete elements with a minimum of fuss</strong>.</p>
-<p>Quoted from the <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
-</blockquote>
-<p>I have emphasized the testability aspect quite a lot in this article. However, this approach allows switching freely between alternative backends in production environments as well.</p>
-<p>As we have seen Polysemy — or algebraic effect systems in general — make this possible by the separation of effect <em>declaration</em>, effect <em>usage</em> and effect <em>interpretation</em>.</p>
-<p>Furthermore, Polysemy also allows you to freely combine several effects. This is a huge gain in software composability.</p>
-]]></description>
-    <pubDate>Fri, 29 May 2020 00:00:00 UT</pubDate>
-    <guid>https://thma.github.io//posts/2020-05-29-polysemy-clean-architecture.html</guid>
     <dc:creator>Thomas Mahler</dc:creator>
 </item>
 
