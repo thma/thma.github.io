@@ -66,3 +66,148 @@ Wouldn't it be much more adequate to provide a fully automated dependency check 
 
 So let's build a **DepencyChecker**!
 
+### How to define CleanArchitecture compliance?
+
+According to the dependency rule only references from outer to inner layers are permitted.
+
+Given our four packages:
+
+```haskell
+-- | this type represents the package structure of a module e.g. Data.Time.Calendar resides in package Date.Time
+type Package = String
+
+-- | the list of source packages in descending order from outermost to innermost package in our CleanArchitecture project
+cleanArchitecturePackages :: [Package]
+cleanArchitecturePackages = ["ExternalInterfaces", "InterfaceAdapters", "UseCases", "Domain"]
+```
+
+all permitted dependency pairs `(fromModule, toModule)` can be computed with:
+
+```haskell
+-- | for a given list of packages this function produces the set of all allowed dependency pairs between packages.
+--   Allowed dependencies according to CleanArchitecture:
+--   1. imports within the same package
+--   2. imports from outer layers to inner layers
+cleanArchitectureCompliantDeps :: [Package] -> [(Package, Package)]
+cleanArchitectureCompliantDeps [] = []
+cleanArchitectureCompliantDeps lst@(p : ps) = zip (repeat p) lst ++ cleanArchitectureCompliantDeps ps
+```
+
+`cleanArchitectureCompliantDeps cleanArchitecturePackages` yields:
+
+```haskell
+[("ExternalInterfaces","ExternalInterfaces"),
+ ("ExternalInterfaces","InterfaceAdapters"),
+ ("ExternalInterfaces","UseCases"),
+ ("ExternalInterfaces","Domain"),
+ ("InterfaceAdapters","InterfaceAdapters"),
+ ("InterfaceAdapters","UseCases"),
+ ("InterfaceAdapters","Domain"),
+ ("UseCases","UseCases"),
+ ("UseCases","Domain"),
+ ("Domain","Domain")]
+```
+
+So the overall idea is to verify for all Haskell modules in our "src" folder that all their import statements are either contained in this list or are imports of some external librarys.
+
+### Getting a list of all import declarations of all .hs files
+
+In this step I will reuse functions and types from Graphmod. Graphmod comes with a `Utils` module that provides a function `parseFile :: FilePath -> IO (ModName,[Import])` which parses a file into a representation of its import declaration section. `ModName` and `Import` are defined as follows: 
+
+```haskell
+data Import    = Import { impMod :: ModName, impType :: ImpType } deriving Show
+
+data ImpType   = NormalImp | SourceImp deriving (Show,Eq,Ord)
+ 
+data Qualifier = Hierarchy [String] | FromFile [String] deriving (Show)
+
+type ModName   = (Qualifier,String)
+```
+
+Given this handy `parseFile` function we can collect all module import declaration under some folder `dir` with the following code:
+
+
+```haskell
+-- | this type represents the section of import declaration at the beginning of a Haskell module
+type ModuleImportDeclarations = (ModName, [Import])
+
+-- | scan all files under filepath 'dir' and return a list of all their import declarations.
+allImportDeclarations :: FilePath -> IO [ModuleImportDeclarations]
+allImportDeclarations dir = do
+  files <- allFiles dir
+  mapM parseFile files
+
+-- | list all files in the given directory and recursively include all sub directories
+allFiles :: FilePath -> IO [FilePath]
+allFiles dir = do
+  files <- listDirectory dir
+  let qualifiedFiles = map (\f -> dir ++ "/" ++ f) files
+  concatMapM
+    ( \f -> do
+        isFile <- doesDirectoryExist f
+        if isFile
+          then allFiles f
+          else return [f]
+    )
+    qualifiedFiles
+```
+
+### Validating the module import declarations 
+
+Now that we have all `ModuleImportDeclarations` collected in a list we have to verify each of them.
+We start with a function that verifies the import declaration section of a single module as represented by a `ModuleImportDeclarations` instance. In order to validate this section we have to provide two more items:
+
+1. a list `allPackages` containing all packages under consideration (in our case the `cleanArchitecturePackages` as defined above)
+
+2. a list of all compliant dependency pairings between elements of the `allPackages` list, in our case the `cleanArchitectureCompliantDeps cleanArchitecturePackages` as defined above
+
+```haskell
+-- | this function verifies a ModuleImportDeclarations instance
+--   (that is all import declarations of a given Haskell module.)
+--   If all imports comply to the rules Right () is returned.
+--   If offending imports are found, they are returned via Left.
+verifyImportDecl :: [Package] -> [(Package, Package)] -> ModuleImportDeclarations -> Either ModuleImportDeclarations ()
+verifyImportDecl allPackages compliantDependencies (packageFrom, imports) =
+  let offending = filter (not . verify packageFrom) imports
+   in if null offending
+        then Right ()
+        else Left (packageFrom, offending)
+  where
+    -- | verify checks a single import declaration.
+    --   An import is compliant iff:
+    --   1. it refers to some external package which not member of the 'packages' list
+    --   2. the package dependency is a member of the compliant dependencies between elements of the 'packages' list.
+    verify :: ModName -> Import -> Bool
+    verify pFrom imp =
+      importPackage imp `notElem` allPackages
+        || (modulePackage pFrom, importPackage imp) `elem` compliantDependencies
+
+
+-- | this function returns the Package information from an Import definition
+importPackage :: Import -> Package
+importPackage imp = modulePackage (impMod imp)
+
+-- | this function returns the Package information from a ModName definition
+modulePackage :: ModName -> Package
+modulePackage (q, _m) = intercalate "." (qualifierNodes q)
+```
+
+As a next step we define a function that maps the function `verifyImportDecl` over the complete list of all `ModuleImportDeclarations`. This results in a List of Eithers.
+
+
+```haskell
+-- | verify the dependencies of a list of module import declarations. The results are collected into a list of Eithers.
+verifyAllDependencies :: [Package] -> [(Package, Package)] -> [ModuleImportDeclarations] -> Either [(ModName, [Import])] ()
+verifyAllDependencies allPackages compliantDependencies imports= do
+  let results = map (verifyImportDecl allPackages compliantDependencies) imports
+  let (errs, _compliant) = partitionEithers results
+  if null errs
+    then Right ()
+    else Left errs
+```
+
+
+
+
+
+
