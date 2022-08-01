@@ -23,11 +23,11 @@ In my last to posts ([integration of Warp and Hal](https://thma.github.io/posts/
 >
 > [Uncle Bob](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 
-At one point for example I noticed that a piece of code in the InterfaceAdapters package references a module in the ExternalInterfaces package.
+At one point for example I noticed that a piece of code in the InterfaceAdapters package referenced a module in the ExternalInterfaces package.
 
 This mishap was easy to fix, but I thought about ways to visualize module dependencies and to automatically verify that all dependencies comply to the **dependency rule**.
 
-In this post I'm writing about my findings.
+In this post I'll share my findings.
 
 ## Visualizing Module dependencies with graphmod
 
@@ -35,9 +35,9 @@ Whenever I think I had a brilliant idea, the Internet keeps telling me that some
 
 So before starting to write my own *Module Dependency Visualizer* tool, I asked the Internet if others already had the same idea.
 
-And &ndash; not so surprisingly &ndash; I found [graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It outputs GraphViz DOT models and is able to scan quite complex Haskell code bases in decent time.
+And &ndash; not so surprisingly &ndash; I found [graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It outputs [GraphViz](https://graphviz.org/) DOT models and is able to scan quite complex Haskell code bases in decent time.
 
-After installing it with 
+After installing it with
 
 ```bash
 cabal install graphmod
@@ -55,7 +55,7 @@ Here is the output:
 
 As required by the CleanArchitecture model all dependencies are directed inwards. No dependencies are going from inner layers to more outward layers.
 
-Graphdot also provides additional flags to reduce clutter by pruning, to visualize the dependencies without package clustering, etc.  
+Graphmod also provides additional flags to reduce clutter by pruning, to visualize the dependencies without package clustering, etc.  
 You'll find a few examples in [the graphmod wiki](https://github.com/yav/graphmod/wiki).
 
 ## Automating CleanArchitecture dependency validation
@@ -63,4 +63,6 @@ You'll find a few examples in [the graphmod wiki](https://github.com/yav/graphmo
 Visually inspecting a code base in this way is great. But it still involves manual effort if we intend to re-evaluate this image after each code change.
 
 Wouldn't it be much more adequate to provide a fully automated dependency check to be include in each CI/CD run?
+
+So let's build a **DepencyChecker**!
 
