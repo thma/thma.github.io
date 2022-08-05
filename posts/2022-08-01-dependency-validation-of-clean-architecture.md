@@ -220,7 +220,7 @@ verifyCleanArchitectureDependencies =
     (cleanArchitectureCompliantDeps cleanArchitecturePackages)
 ```
 
-### Using the dependency checker in test cases
+## Using the dependency checker in test cases
 
 Using the dependency checker in test cases is quite straighforward.
 First load all import declaractions than validate them:
