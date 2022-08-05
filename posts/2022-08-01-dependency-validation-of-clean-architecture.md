@@ -64,7 +64,7 @@ Visually inspecting a code base in this way is great. But it still involves manu
 
 Wouldn't it be much more adequate to provide a fully automated dependency check to be include in each CI/CD run?
 
-So let's build a **DepencyChecker**!
+So let's build a **DepencyChecker™**!
 
 ### How to define CleanArchitecture compliance?
 
@@ -93,7 +93,7 @@ cleanArchitectureCompliantDeps [] = []
 cleanArchitectureCompliantDeps lst@(p : ps) = zip (repeat p) lst ++ cleanArchitectureCompliantDeps ps
 ```
 
-`cleanArchitectureCompliantDeps cleanArchitecturePackages` yields:
+`cleanArchitectureCompliantDeps cleanArchitecturePackages` thus yields:
 
 ```haskell
 [("ExternalInterfaces","ExternalInterfaces"),
@@ -108,11 +108,11 @@ cleanArchitectureCompliantDeps lst@(p : ps) = zip (repeat p) lst ++ cleanArchite
  ("Domain","Domain")]
 ```
 
-So the overall idea is to verify for all Haskell modules in our "src" folder that all their import statements are either contained in this list or are imports of some external librarys.
+The overall idea of the dependency check is to verify for all Haskell modules in our "src" folder that all their import statements are either contained in this list or are imports of some external librarys.
 
 ### Getting a list of all import declarations of all .hs files
 
-In this step I will reuse functions and types from Graphmod. Graphmod comes with a `Utils` module that provides a function `parseFile :: FilePath -> IO (ModName,[Import])` which parses a file into a representation of its import declaration section. `ModName` and `Import` are defined as follows: 
+In this step I will reuse functions and types from Graphmod. Graphmod comes with a `Utils` module that provides a function `parseFile :: FilePath -> IO (ModName,[Import])` which parses a file into a representation of its import declaration section. `ModName` and `Import` are defined as follows:
 
 ```haskell
 data Import    = Import { impMod :: ModName, impType :: ImpType } deriving Show
@@ -125,7 +125,6 @@ type ModName   = (Qualifier,String)
 ```
 
 Given this handy `parseFile` function we can collect all module import declaration under some folder `dir` with the following code:
-
 
 ```haskell
 -- | this type represents the section of import declaration at the beginning of a Haskell module
@@ -152,7 +151,11 @@ allFiles dir = do
     qualifiedFiles
 ```
 
-### Validating the module import declarations 
+#### Always fix things upstream
+
+As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a [pull request](https://github.com/yav/graphmod/pull/40) that will also allow to use the `Utils` module when including Graphmod in your package.yaml or cabal file.
+
+### Validating the module import declarations
 
 Now that we have all `ModuleImportDeclarations` collected in a list we have to verify each of them.
 We start with a function that verifies the import declaration section of a single module as represented by a `ModuleImportDeclarations` instance. In order to validate this section we have to provide two more items:
@@ -192,11 +195,11 @@ modulePackage :: ModName -> Package
 modulePackage (q, _m) = intercalate "." (qualifierNodes q)
 ```
 
-As a next step we define a function that maps the function `verifyImportDecl` over the complete list of all `ModuleImportDeclarations`. This results in a List of Eithers.
-
+As a next step we define a function that maps the function `verifyImportDecl` over the complete list of all `ModuleImportDeclarations`. This results in a List of Eithers. I'm using `partitionEither` to transform the result into an
+`Either [(ModName, [Import])] ()`:
 
 ```haskell
--- | verify the dependencies of a list of module import declarations. The results are collected into a list of Eithers.
+-- | verify the dependencies of a list of module import declarations. The results are collected into an 'Either [(ModName, [Import])] ()'.
 verifyAllDependencies :: [Package] -> [(Package, Package)] -> [ModuleImportDeclarations] -> Either [(ModName, [Import])] ()
 verifyAllDependencies allPackages compliantDependencies imports= do
   let results = map (verifyImportDecl allPackages compliantDependencies) imports
@@ -206,8 +209,70 @@ verifyAllDependencies allPackages compliantDependencies imports= do
     else Left errs
 ```
 
+We can use the generic `verifyAllDependencies` to create a specific `verifyCleanArchitectureDependencies` function which uses `cleanArchitecturePackages` and `cleanArchitectureCompliantDeps` to define the dependency rules for our CleanArchitecture project:
 
+```haskell
+-- | verify a list of ModuleImportDeclarations to comply to the clean architecture dependency rules.
+verifyCleanArchitectureDependencies :: [ModuleImportDeclarations] -> Either [(ModName, [Import])] ()
+verifyCleanArchitectureDependencies =
+  verifyAllDependencies
+    cleanArchitecturePackages
+    (cleanArchitectureCompliantDeps cleanArchitecturePackages)
+```
 
+### Using the dependency checker in test cases
 
+Using the dependency checker in test cases is quite straighforward.
+First load all import declaractions than validate them:
+
+```haskell
+import Test.Hspec ( hspec, describe, it, shouldBe, Spec )
+import DependencyChecker
+    ( ModName,
+      ImpType(..),
+      Import(..),
+      fromHierarchy,
+      verifyCleanArchitectureDependencies,
+      allImportDeclarations )
+
+main :: IO ()
+main = hspec spec
+
+spec :: Spec
+spec =
+  describe "The Dependency Checker" $ do
+    it "ensures that all modules comply to the outside-in rule" $ do
+      allImports <- allImportDeclarations "src"
+      verifyCleanArchitectureDependencies allImports `shouldBe` Right ()
+```
+
+As you can see from executing the tests with `stack test`, the dependency checker does not find any issues in the codebase:
+
+```bash
+CleanArchitecture
+  The Dependency Checker
+    ensures that all modules comply to the outside-in rule
+```
+
+But if we add an offending dependency to one of the modules, say adding
+
+```haskell
+import InterfaceAdapters.Config
+```
+
+to `Domain.ReservationDomain`, we'll get a failure with the following message:
+
+```bash
+Failures:
+
+ test\CleanArchitectureSpec.hs:21:54: 
+  1) CleanArchitecture, The Dependency Checker, makes sure all modules comply to the outside-in rule
+       expected: Right ()
+        but got: Left [((Hierarchy ["Domain"],"ReservationDomain"),[Import {impMod = (Hierarchy ["InterfaceAdapters"],"Config"), impType = NormalImp}])]
+```
+
+Now it becomes clear why I collected the validation results in an `Either [(ModName, [Import])] ()`: It allows to produce detailed error messages or even to use the offending dependencies in further computations.
+
+## Conclusion
 
 
