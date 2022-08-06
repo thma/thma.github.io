@@ -7,8 +7,214 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sun, 17 Jul 2022 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Mon, 01 Aug 2022 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Dependency Validation of a CleanArchitecture application</title>
+    <link>https://thma.github.io//posts/2022-08-01-dependency-validation-of-clean-architecture.html</link>
+    <description><![CDATA[<div class="info">
+    <em>Posted on August  1, 2022
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="introduction">Introduction</h2>
+<p>Welcome to yet another sequel of <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Clean Architecture with Haskell and Polysemy</a>.</p>
+<p>In my last to posts (<a href="https://thma.github.io/posts/2022-07-04-polysemy-and-warp.html">integration of Warp and Hal</a> and <a href="https://thma.github.io/posts/2022-07-17-configuration-of-a-polysemy-app.html">configuration of a polysemy app</a>) I was adding new features to my code base without caring much about one of the core rules of CleanArchitecture:</p>
+<blockquote>
+<p>The overriding rule that makes this architecture work is <strong>The Dependency Rule</strong>. This rule says that source code dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer circle. In particular, the name of something declared in an outer circle must not be mentioned by the code in the an inner circle. That includes, functions, classes. variables, or any other named software entity.</p>
+<p><a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Uncle Bob</a></p>
+</blockquote>
+<p>At one point for example I noticed that a module in the <code>InterfaceAdapters</code> package referenced code in the <code>ExternalInterfaces</code> package further out.</p>
+<p>This mishap was easy to fix by moving the module to the <code>ExternalInterfaces</code> package , but I thought about ways to visualize module dependencies and to automatically verify that all dependencies comply to the <strong>dependency rule</strong>.</p>
+<p>In this post I’ll share my findings.</p>
+<h2 id="visualizing-module-dependencies-with-graphmod">Visualizing Module dependencies with graphmod</h2>
+<p>Whenever I think I had a brilliant idea, the Internet keeps telling me that someone else already had the same idea years ago…</p>
+<p>So before starting to write my own <em>Module Dependency Visualizer</em> tool, I asked the Internet if others already had the same idea. And – not so surprisingly – I found <a href="https://github.com/yav/graphmod">graphmod</a> by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs <a href="https://graphviz.org/">GraphViz</a> DOT models.</p>
+<p>After installing it with</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ex">cabal</span> install graphmod</span></code></pre></div>
+<p>The following command generates a detailed view on the dependencies in the PolySemyCleanArchitecture project:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ex">graphmod</span> <span class="kw">|</span> <span class="ex">dot</span> -Tpdf <span class="op">&gt;</span> dependencies.pdf</span></code></pre></div>
+<p>Here is the output:</p>
+<figure>
+<img src="../img/dependencies.png" alt="" /><figcaption>deps</figcaption>
+</figure>
+<p>As required by the CleanArchitecture model all dependencies are directed inwards. No dependencies are going from inner layers to more outward layers.</p>
+<p>Graphmod also provides additional flags to reduce clutter by pruning, to visualize the dependencies without package clustering, etc.<br />
+You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">the graphmod wiki</a>.</p>
+<h2 id="automating-cleanarchitecture-dependency-validation">Automating CleanArchitecture dependency validation</h2>
+<p>Visually inspecting a code base in this way is great. But it still involves manual effort if we intend to re-evaluate this image after each code change.</p>
+<p>Wouldn’t it be much more adequate to provide a fully automated dependency check to be include in each CI/CD run?</p>
+<p>So in this section we are going to build such a tool.</p>
+<h3 id="how-to-define-cleanarchitecture-compliance">How to define CleanArchitecture compliance?</h3>
+<p>According to the dependency rule only references from outer to inner layers are permitted.</p>
+<p>Given the four packages of our PolysemyCleanArchitecture project:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- | the list of source packages in descending order from outermost to innermost package in our CleanArchitecture project</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="ot">cleanArchitecturePackages ::</span> [<span class="dt">Package</span>]</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a>cleanArchitecturePackages <span class="ot">=</span> [<span class="st">&quot;ExternalInterfaces&quot;</span>, <span class="st">&quot;InterfaceAdapters&quot;</span>, <span class="st">&quot;UseCases&quot;</span>, <span class="st">&quot;Domain&quot;</span>]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="co">-- | this type represents the package structure of a module e.g. Data.Time.Calendar resides in package Date.Time</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">Package</span> <span class="ot">=</span> <span class="dt">String</span></span></code></pre></div>
+<p>all permitted dependency pairs <code>(fromModule, toModule)</code> can be computed with:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="co">-- | for a given list of packages this function produces the set of all allowed dependency pairs between packages.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="co">--   Allowed dependencies according to CleanArchitecture:</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a><span class="co">--   1. imports within the same package</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a><span class="co">--   2. imports from outer layers to inner layers</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a><span class="ot">cleanArchitectureCompliantDeps ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)]</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a>cleanArchitectureCompliantDeps [] <span class="ot">=</span> []</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>cleanArchitectureCompliantDeps lst<span class="op">@</span>(p <span class="op">:</span> ps) <span class="ot">=</span> <span class="fu">zip</span> (<span class="fu">repeat</span> p) lst <span class="op">++</span> cleanArchitectureCompliantDeps ps</span></code></pre></div>
+<p><code>cleanArchitectureCompliantDeps cleanArchitecturePackages</code> thus yields:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a>[(<span class="st">&quot;ExternalInterfaces&quot;</span>,<span class="st">&quot;ExternalInterfaces&quot;</span>),</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a> (<span class="st">&quot;ExternalInterfaces&quot;</span>,<span class="st">&quot;InterfaceAdapters&quot;</span>),</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a> (<span class="st">&quot;ExternalInterfaces&quot;</span>,<span class="st">&quot;UseCases&quot;</span>),</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a> (<span class="st">&quot;ExternalInterfaces&quot;</span>,<span class="st">&quot;Domain&quot;</span>),</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a> (<span class="st">&quot;InterfaceAdapters&quot;</span>,<span class="st">&quot;InterfaceAdapters&quot;</span>),</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a> (<span class="st">&quot;InterfaceAdapters&quot;</span>,<span class="st">&quot;UseCases&quot;</span>),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a> (<span class="st">&quot;InterfaceAdapters&quot;</span>,<span class="st">&quot;Domain&quot;</span>),</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true"></a> (<span class="st">&quot;UseCases&quot;</span>,<span class="st">&quot;UseCases&quot;</span>),</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true"></a> (<span class="st">&quot;UseCases&quot;</span>,<span class="st">&quot;Domain&quot;</span>),</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true"></a> (<span class="st">&quot;Domain&quot;</span>,<span class="st">&quot;Domain&quot;</span>)]</span></code></pre></div>
+<p>The overall idea of the dependency check is to verify for all Haskell modules in our “src” folder that all their import statements are either contained in this list or are imports of some external libraries.</p>
+<h3 id="getting-a-list-of-all-import-declarations-of-all-.hs-files">Getting a list of all import declarations of all .hs files</h3>
+<p>In this step I will reuse functions and types from Graphmod. Graphmod comes with a <code>Utils</code> module that provides a function <code>parseFile :: FilePath -&gt; IO (ModName,[Import])</code> which parses a file into a representation of its import declaration section. <code>ModName</code> and <code>Import</code> are defined as follows:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Import</span>    <span class="ot">=</span> <span class="dt">Import</span> {<span class="ot"> impMod ::</span> <span class="dt">ModName</span>,<span class="ot"> impType ::</span> <span class="dt">ImpType</span> } <span class="kw">deriving</span> <span class="dt">Show</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">ImpType</span>   <span class="ot">=</span> <span class="dt">NormalImp</span> <span class="op">|</span> <span class="dt">SourceImp</span> <span class="kw">deriving</span> (<span class="dt">Show</span>,<span class="dt">Eq</span>,<span class="dt">Ord</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a> </span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Qualifier</span> <span class="ot">=</span> <span class="dt">Hierarchy</span> [<span class="dt">String</span>] <span class="op">|</span> <span class="dt">FromFile</span> [<span class="dt">String</span>] <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">ModName</span>   <span class="ot">=</span> (<span class="dt">Qualifier</span>,<span class="dt">String</span>)</span></code></pre></div>
+<p>Given this handy <code>parseFile</code> function we can collect all module import declaration under some folder <code>dir</code> with the following code:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="co">-- | this type represents the section of import declaration at the beginning of a Haskell module</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a><span class="kw">type</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">=</span> (<span class="dt">ModName</span>, [<span class="dt">Import</span>])</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a><span class="co">-- | scan all files under filepath &#39;dir&#39; and return a list of all their import declarations.</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a><span class="ot">allImportDeclarations ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> [<span class="dt">ModuleImportDeclarations</span>]</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true"></a>allImportDeclarations dir <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true"></a>  files <span class="ot">&lt;-</span> allFiles dir</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true"></a>  <span class="fu">mapM</span> parseFile files</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true"></a><span class="co">-- | list all files in the given directory and recursively include all sub directories</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true"></a><span class="ot">allFiles ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> [<span class="dt">FilePath</span>]</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true"></a>allFiles dir <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true"></a>  files <span class="ot">&lt;-</span> listDirectory dir</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true"></a>  <span class="kw">let</span> qualifiedFiles <span class="ot">=</span> <span class="fu">map</span> (\f <span class="ot">-&gt;</span> dir <span class="op">++</span> <span class="st">&quot;/&quot;</span> <span class="op">++</span> f) files</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true"></a>  concatMapM</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true"></a>    ( \f <span class="ot">-&gt;</span> <span class="kw">do</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true"></a>        isFile <span class="ot">&lt;-</span> doesDirectoryExist f</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true"></a>        <span class="kw">if</span> isFile</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true"></a>          <span class="kw">then</span> allFiles f</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true"></a>          <span class="kw">else</span> <span class="fu">return</span> [f]</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true"></a>    )</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true"></a>    qualifiedFiles</span></code></pre></div>
+<h4 id="always-fix-things-upstream">Always fix things upstream</h4>
+<p>As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a <a href="https://github.com/yav/graphmod/pull/40">pull request</a> that will allow to use the <code>Utils</code> module when including Graphmod in your package.yaml or cabal file.</p>
+<h3 id="validating-the-module-import-declarations">Validating the module import declarations</h3>
+<p>Now that we have all <code>ModuleImportDeclarations</code> collected in a list we must validate each of them. We start with a function that validates the import declaration section of a single module as represented by a <code>ModuleImportDeclarations</code> instance. In order to validate this section we have to provide two more items:</p>
+<ol type="1">
+<li><p>a list <code>allPackages</code> containing all packages under consideration (in our case the <code>cleanArchitecturePackages</code> as defined above)</p></li>
+<li><p>a list of all compliant dependency pairings between elements of the <code>allPackages</code> list, in our case the <code>cleanArchitectureCompliantDeps cleanArchitecturePackages</code> as defined above</p></li>
+</ol>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | this function verifies a ModuleImportDeclarations instance</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="co">--   (that is all import declarations of a given Haskell module.)</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a><span class="co">--   If all imports comply to the rules Right () is returned.</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a><span class="co">--   If offending imports are found, they are returned via Left.</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a><span class="ot">verifyImportDecl ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ModuleImportDeclarations</span> ()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>verifyImportDecl allPackages compliantDependencies (packageFrom, imports) <span class="ot">=</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a>  <span class="kw">let</span> offending <span class="ot">=</span> <span class="fu">filter</span> (<span class="fu">not</span> <span class="op">.</span> verify packageFrom) imports</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a>   <span class="kw">in</span> <span class="kw">if</span> <span class="fu">null</span> offending</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a>        <span class="kw">then</span> <span class="dt">Right</span> ()</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a>        <span class="kw">else</span> <span class="dt">Left</span> (packageFrom, offending)</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true"></a>    <span class="co">-- | verify checks a single import declaration.</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true"></a>    <span class="co">--   An import is compliant iff:</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true"></a>    <span class="co">--   1. it refers to some external package which not member of the &#39;packages&#39; list or</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true"></a>    <span class="co">--   2. the package dependency is a member of the compliant dependencies between elements of the &#39;packages&#39; list.</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true"></a><span class="ot">    verify ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true"></a>    verify pFrom imp <span class="ot">=</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true"></a>      importPackage imp <span class="ot">`notElem`</span> allPackages</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true"></a>        <span class="op">||</span> (modulePackage pFrom, importPackage imp) <span class="ot">`elem`</span> compliantDependencies</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true"></a></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true"></a></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from an Import definition</span></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true"></a><span class="ot">importPackage ::</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true"></a>importPackage imp <span class="ot">=</span> modulePackage (impMod imp)</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true"></a></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from a ModName definition</span></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true"></a><span class="ot">modulePackage ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true"></a>modulePackage (q, _m) <span class="ot">=</span> intercalate <span class="st">&quot;.&quot;</span> (qualifierNodes q)</span></code></pre></div>
+<p>As a next step we define a function that maps the function <code>verifyImportDecl</code> over the complete list of all <code>ModuleImportDeclarations</code>. This results in a List of Eithers. I’m using <code>partitionEither</code> to transform the result into an <code>Either [(ModName, [Import])] ()</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="co">-- | verify the dependencies of a list of module import declarations. The results are collected into an &#39;Either [(ModName, [Import])] ()&#39; which will be easier to handle in subsequent steps.</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a><span class="ot">verifyAllDependencies ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a>verifyAllDependencies allPackages compliantDependencies imports<span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a>  <span class="kw">let</span> results <span class="ot">=</span> <span class="fu">map</span> (verifyImportDecl allPackages compliantDependencies) imports</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a>  <span class="kw">let</span> (errs, _compliant) <span class="ot">=</span> partitionEithers results</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>  <span class="kw">if</span> <span class="fu">null</span> errs</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>    <span class="kw">then</span> <span class="dt">Right</span> ()</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a>    <span class="kw">else</span> <span class="dt">Left</span> errs</span></code></pre></div>
+<p>We can use the generic <code>verifyAllDependencies</code> to create a specific <code>verifyCleanArchitectureDependencies</code> function which uses <code>cleanArchitecturePackages</code> and <code>cleanArchitectureCompliantDeps</code> to define the dependency rules for our CleanArchitecture project:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="co">-- | verify a list of ModuleImportDeclarations to comply to the clean architecture dependency rules.</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a><span class="ot">verifyCleanArchitectureDependencies ::</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a>verifyCleanArchitectureDependencies <span class="ot">=</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a>  verifyAllDependencies</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true"></a>    cleanArchitecturePackages</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true"></a>    (cleanArchitectureCompliantDeps cleanArchitecturePackages)</span></code></pre></div>
+<h2 id="using-the-dependency-checker-in-test-cases">Using the dependency checker in test cases</h2>
+<p>Using the dependency checker in test cases is quite straighforward. First load all import declaractions than validate them:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Test.Hspec</span> ( hspec, describe, it, shouldBe, <span class="dt">Spec</span> )</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">DependencyChecker</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>    ( <span class="dt">ModName</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>      <span class="dt">ImpType</span>(<span class="op">..</span>),</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>      <span class="dt">Import</span>(<span class="op">..</span>),</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>      fromHierarchy,</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true"></a>      verifyCleanArchitectureDependencies,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true"></a>      allImportDeclarations )</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true"></a></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true"></a>main <span class="ot">=</span> hspec spec</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true"></a></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true"></a>spec <span class="ot">=</span></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true"></a>  describe <span class="st">&quot;The Dependency Checker&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true"></a>    it <span class="st">&quot;ensures that all modules comply to the outside-in rule&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true"></a>      allImports <span class="ot">&lt;-</span> allImportDeclarations <span class="st">&quot;src&quot;</span></span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true"></a>      formatLeftAsErrMsg </span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true"></a>        (verifyCleanArchitectureDependencies allImports) <span class="ot">`shouldBe`</span> <span class="dt">Right</span> ()</span></code></pre></div>
+<p>As you can see from executing the tests with <code>stack test</code>, the dependency checker does not find any issues in the codebase:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="ex">CleanArchitecture</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a>  <span class="ex">The</span> Dependency Checker</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true"></a>    <span class="ex">ensures</span> that all modules comply to the outside-in rule</span></code></pre></div>
+<p>But if we add an offending dependency to some of the modules, say adding</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span></code></pre></div>
+<p>to <code>Domain.ReservationDomain</code> and to <code>UseCases.ReservationUseCase</code>, we’ll get a failure with the following message:</p>
+<pre><code>Failures:
+
+  test/CleanArchitectureSpec.hs:22:75: 
+  1) CleanArchitecture, The Dependency Checker, makes sure all modules comply to the outside-in rule
+       expected: Right ()
+        but got: Left [
+          &quot;Domain.ReservationDomain imports InterfaceAdapters.Config&quot;,
+          &quot;UseCases.ReservationUseCase imports InterfaceAdapters.Config&quot;]
+</code></pre>
+<p>the rendering of the Error message is done by the helper function <code>formatLeftAsErrMsg</code>:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a><span class="co">-- | Right () is returned unchanged, </span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a><span class="co">--   Left imports will be rendered as a human readable error message.</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true"></a><span class="ot">formatLeftAsErrMsg ::</span> <span class="dt">Either</span> [<span class="dt">ModuleImportDeclarations</span>] () <span class="ot">-&gt;</span> <span class="dt">Either</span> [<span class="dt">String</span>] ()</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Right</span> ()) <span class="ot">=</span> <span class="dt">Right</span> ()</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Left</span> imports) <span class="ot">=</span> <span class="dt">Left</span> (<span class="fu">map</span> toString imports)</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true"></a><span class="ot">    toString ::</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true"></a>    toString (modName, imports) <span class="ot">=</span> ppModule modName <span class="op">++</span> <span class="st">&quot; imports [&quot;</span> <span class="op">++</span> intercalate <span class="st">&quot;, &quot;</span> (<span class="fu">map</span> (ppModule <span class="op">.</span> impMod) imports) <span class="op">++</span> <span class="st">&quot;]&quot;</span></span></code></pre></div>
+<h2 id="conclusion">Conclusion</h2>
+<p>Thanks to Graphmod rolling our own depency checker worked like a charm.</p>
+<p>Adding such an automated dependency validation to our testsuite will help to maintain our architecture clean even if we don’t pay attention while coding.</p>
+]]></description>
+    <pubDate>Mon, 01 Aug 2022 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2022-08-01-dependency-validation-of-clean-architecture.html</guid>
+    <dc:creator>Thomas Mahler</dc:creator>
+</item>
+<item>
     <title>Configuration of a Polysemy application</title>
     <link>https://thma.github.io//posts/2022-07-17-configuration-of-a-polysemy-app.html</link>
     <description><![CDATA[<div class="info">
@@ -2120,82 +2326,6 @@ ghci&gt; skiExpr
 ]]></description>
     <pubDate>Sun, 20 Dec 2020 00:00:00 UT</pubDate>
     <guid>https://thma.github.io//posts/2020-12-20-reconciling-fp-and-oop-concepts.html</guid>
-    <dc:creator>Thomas Mahler</dc:creator>
-</item>
-<item>
-    <title>Using Hakyll with GitHub Pages has become even easier!</title>
-    <link>https://thma.github.io//posts/2020-11-15-using-hakyll-with-github-pages.html</link>
-    <description><![CDATA[<div class="info">
-    <em>Posted on November 15, 2020
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<p>Over the weekend I’ve set up a <a href="https://jaspervdj.be/hakyll/">hakyll</a> powered blog on github pages (actually the one you are reading right now).</p>
-<p>I’d like to share my findings, as I found an easier way to integrate Hakyll with GitHub Pages.</p>
-<h2 id="the-documented-way">The documented way</h2>
-<p>I followed the tutorial <a href="https://jaspervdj.be/hakyll/tutorials/github-pages-tutorial.html">Using Hakyll with GitHub Pages</a>. This tutorial assumes that the GitHub pages must always be served from the root folder of a github repository.</p>
-<p>It then describes a way to achieve this by using a <code>develop</code> branch to do all the Hakyll work and finally writing the contents to the default <code>_site</code> folder. This folder is excluded from version control by entries in the <code>.gitignore</code> file both in the <code>develop</code> and <code>master</code> branches.</p>
-<p>So to finally publish the generated site you’ll have to switch to the <code>master</code> branch and copy the contents of the <code>_site</code> folder to the root folder of your project.</p>
-<p>I tried this approach and it works nicely.</p>
-<p>But then I found out that GitHub pages also allows to use a <code>docs</code> folder as the document root of your GitHub Pages site.</p>
-<p>This makes things significantly easier, as you can do all the necessary hakyll tasks and the final publishing on the same <code>master</code> branch.</p>
-<h2 id="the-easier-way">The easier way</h2>
-<h3 id="github-setup">GitHub setup</h3>
-<ol type="1">
-<li>If required, create a new GitHub repository for your blog.</li>
-<li>If required, create a master branch.</li>
-<li>in the Settings of your GitHub project define that the <code>/docs</code> folder from the <code>master</code> branch should be used as document-root of your site. Please refer to the <a href="https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site#choosing-a-publishing-source">documentation</a> in case of problems.</li>
-<li>Create a .gitignore file with at a minimum, the following entries:</li>
-</ol>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ex">_cache/</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="ex">.stack-work/</span></span></code></pre></div>
-<h3 id="local-setup">Local setup</h3>
-<p>If required, create a new Hakyll project. If you’re a stack user, there is a Hakyll template available that makes this step easy:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ex">stack</span> new myblog hakyll-template</span></code></pre></div>
-<p>Create a .gitignore file in your blog’s directory with at a minimum, the same directories listed as in the GitHub repository. Use the following git commands to setup your local repository:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="fu">git</span> init</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="co"># track all the source files for our blog.</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="fu">git</span> add .</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a><span class="co"># make our first commit</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="fu">git</span> commit -m <span class="st">&quot;initial commit.&quot;</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="co"># and add the GitHub repository as a remote.</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a><span class="fu">git</span> remote add origin <span class="op">&lt;</span>URL to your GitHub pages repository<span class="op">&gt;</span></span></code></pre></div>
-<h3 id="modify-site.hs">Modify site.hs</h3>
-<p>In order to make Hakyll generate the site into the <code>docs</code> folder we have to edit the Hakyll Main module (<code>site.hs</code> if you use the stack template) slightly:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="ot">config ::</span> <span class="dt">Configuration</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>config <span class="ot">=</span> defaultConfiguration</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>  { destinationDirectory <span class="ot">=</span> <span class="st">&quot;docs&quot;</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>  }</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>  hakyllWith config <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a>  <span class="op">...</span></span></code></pre></div>
-<h3 id="deployment">Deployment</h3>
-<p>So everything’s all setup, and we’re ready to deploy.</p>
-<p>We need to be able to run the executable that generates the website, so we need to compile it first. If you are using stack, this can be done using:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ex">stack</span> build</span></code></pre></div>
-<p>Next we get a clean build of our site:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="ex">stack</span> exec myblog clean</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a><span class="ex">stack</span> exec myblog build</span></code></pre></div>
-<p>After this step you should see a folder <code>docs</code> under your projects root folder, which contains the generated Hakyll site.</p>
-<p>Now we commit our changes:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="fu">git</span> add -A</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a><span class="fu">git</span> commit -m <span class="st">&quot;Publish.&quot;</span></span></code></pre></div>
-<p>And send them to GitHub:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">git</span> push origin master:master</span></code></pre></div>
-<p>That’s all.</p>
-<p>Now your Hakyll site should be visible under your GitHub Pages URL!</p>
-<h2 id="view-the-source">View the source</h2>
-<p>The source code for this blog post lies under my <a href="https://github.com/thma/thma.github.io">thma.github.io</a> GitHub project. I’ve adopted the composeconference css from <a href="http://katychuang.com/hakyll-cssgarden/gallery/">Katy Chuangs great Hakyll CSS Garden</a> and tweaked it a little bit to look more like GitHub markdown style and to provide some basic responsive design.</p>
-<h2 id="update-nov.-24th-2020">Update Nov. 24th 2020</h2>
-<p>The Hakyll project has just accepted my pull request for the Using Hakyll with GitHub Pages tutorial, which updates the text according to the findings presented in this post.</p>
-<p>The amended version will thus be online shortly, rendering this blog entry kind of obsolete…</p>
-]]></description>
-    <pubDate>Sun, 15 Nov 2020 00:00:00 UT</pubDate>
-    <guid>https://thma.github.io//posts/2020-11-15-using-hakyll-with-github-pages.html</guid>
     <dc:creator>Thomas Mahler</dc:creator>
 </item>
 

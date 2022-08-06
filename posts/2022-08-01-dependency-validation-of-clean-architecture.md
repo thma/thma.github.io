@@ -23,9 +23,9 @@ In my last to posts ([integration of Warp and Hal](https://thma.github.io/posts/
 >
 > [Uncle Bob](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 
-At one point for example I noticed that a piece of code in the InterfaceAdapters package referenced a module in the ExternalInterfaces package.
+At one point for example I noticed that a module in the `InterfaceAdapters` package referenced code in the `ExternalInterfaces` package further out.
 
-This mishap was easy to fix, but I thought about ways to visualize module dependencies and to automatically verify that all dependencies comply to the **dependency rule**.
+This mishap was easy to fix by moving the module to the `ExternalInterfaces` package , but I thought about ways to visualize module dependencies and to automatically verify that all dependencies comply to the **dependency rule**.
 
 In this post I'll share my findings.
 
@@ -33,9 +33,8 @@ In this post I'll share my findings.
 
 Whenever I think I had a brilliant idea, the Internet keeps telling me that someone else already had the same idea years ago...
 
-So before starting to write my own *Module Dependency Visualizer* tool, I asked the Internet if others already had the same idea.
-
-And &ndash; not so surprisingly &ndash; I found [graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It outputs [GraphViz](https://graphviz.org/) DOT models and is able to scan quite complex Haskell code bases in decent time.
+So before starting to write my own *Module Dependency Visualizer* tool, I asked the Internet if others already had the same idea. 
+And &ndash; not so surprisingly &ndash; I found [graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs [GraphViz](https://graphviz.org/) DOT models.
 
 After installing it with
 
@@ -64,21 +63,21 @@ Visually inspecting a code base in this way is great. But it still involves manu
 
 Wouldn't it be much more adequate to provide a fully automated dependency check to be include in each CI/CD run?
 
-So let's build a **DepencyChecker™**!
+So in this section we are going to build such a tool.
 
 ### How to define CleanArchitecture compliance?
 
 According to the dependency rule only references from outer to inner layers are permitted.
 
-Given our four packages:
+Given the four packages of our PolysemyCleanArchitecture project:
 
 ```haskell
--- | this type represents the package structure of a module e.g. Data.Time.Calendar resides in package Date.Time
-type Package = String
-
 -- | the list of source packages in descending order from outermost to innermost package in our CleanArchitecture project
 cleanArchitecturePackages :: [Package]
 cleanArchitecturePackages = ["ExternalInterfaces", "InterfaceAdapters", "UseCases", "Domain"]
+
+-- | this type represents the package structure of a module e.g. Data.Time.Calendar resides in package Date.Time
+type Package = String
 ```
 
 all permitted dependency pairs `(fromModule, toModule)` can be computed with:
@@ -108,7 +107,7 @@ cleanArchitectureCompliantDeps lst@(p : ps) = zip (repeat p) lst ++ cleanArchite
  ("Domain","Domain")]
 ```
 
-The overall idea of the dependency check is to verify for all Haskell modules in our "src" folder that all their import statements are either contained in this list or are imports of some external librarys.
+The overall idea of the dependency check is to verify for all Haskell modules in our "src" folder that all their import statements are either contained in this list or are imports of some external libraries.
 
 ### Getting a list of all import declarations of all .hs files
 
@@ -153,12 +152,12 @@ allFiles dir = do
 
 #### Always fix things upstream
 
-As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a [pull request](https://github.com/yav/graphmod/pull/40) that will also allow to use the `Utils` module when including Graphmod in your package.yaml or cabal file.
+As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a [pull request](https://github.com/yav/graphmod/pull/40) that will allow to use the `Utils` module when including Graphmod in your package.yaml or cabal file.
 
 ### Validating the module import declarations
 
-Now that we have all `ModuleImportDeclarations` collected in a list we have to verify each of them.
-We start with a function that verifies the import declaration section of a single module as represented by a `ModuleImportDeclarations` instance. In order to validate this section we have to provide two more items:
+Now that we have all `ModuleImportDeclarations` collected in a list we must validate each of them.
+We start with a function that validates the import declaration section of a single module as represented by a `ModuleImportDeclarations` instance. In order to validate this section we have to provide two more items:
 
 1. a list `allPackages` containing all packages under consideration (in our case the `cleanArchitecturePackages` as defined above)
 
@@ -178,7 +177,7 @@ verifyImportDecl allPackages compliantDependencies (packageFrom, imports) =
   where
     -- | verify checks a single import declaration.
     --   An import is compliant iff:
-    --   1. it refers to some external package which not member of the 'packages' list
+    --   1. it refers to some external package which not member of the 'packages' list or
     --   2. the package dependency is a member of the compliant dependencies between elements of the 'packages' list.
     verify :: ModName -> Import -> Bool
     verify pFrom imp =
@@ -199,7 +198,7 @@ As a next step we define a function that maps the function `verifyImportDecl` ov
 `Either [(ModName, [Import])] ()`:
 
 ```haskell
--- | verify the dependencies of a list of module import declarations. The results are collected into an 'Either [(ModName, [Import])] ()'.
+-- | verify the dependencies of a list of module import declarations. The results are collected into an 'Either [(ModName, [Import])] ()' which will be easier to handle in subsequent steps.
 verifyAllDependencies :: [Package] -> [(Package, Package)] -> [ModuleImportDeclarations] -> Either [(ModName, [Import])] ()
 verifyAllDependencies allPackages compliantDependencies imports= do
   let results = map (verifyImportDecl allPackages compliantDependencies) imports
@@ -243,7 +242,8 @@ spec =
   describe "The Dependency Checker" $ do
     it "ensures that all modules comply to the outside-in rule" $ do
       allImports <- allImportDeclarations "src"
-      verifyCleanArchitectureDependencies allImports `shouldBe` Right ()
+      formatLeftAsErrMsg 
+        (verifyCleanArchitectureDependencies allImports) `shouldBe` Right ()
 ```
 
 As you can see from executing the tests with `stack test`, the dependency checker does not find any issues in the codebase:
@@ -254,25 +254,42 @@ CleanArchitecture
     ensures that all modules comply to the outside-in rule
 ```
 
-But if we add an offending dependency to one of the modules, say adding
+But if we add an offending dependency to some of the modules, say adding
 
 ```haskell
 import InterfaceAdapters.Config
 ```
 
-to `Domain.ReservationDomain`, we'll get a failure with the following message:
+to `Domain.ReservationDomain` and to `UseCases.ReservationUseCase`, we'll get a failure with the following message:
 
-```bash
+```
 Failures:
 
- test\CleanArchitectureSpec.hs:21:54: 
+  test/CleanArchitectureSpec.hs:22:75: 
   1) CleanArchitecture, The Dependency Checker, makes sure all modules comply to the outside-in rule
        expected: Right ()
-        but got: Left [((Hierarchy ["Domain"],"ReservationDomain"),[Import {impMod = (Hierarchy ["InterfaceAdapters"],"Config"), impType = NormalImp}])]
+        but got: Left [
+          "Domain.ReservationDomain imports InterfaceAdapters.Config",
+          "UseCases.ReservationUseCase imports InterfaceAdapters.Config"]
+
 ```
 
-Now it becomes clear why I collected the validation results in an `Either [(ModName, [Import])] ()`: It allows to produce detailed error messages or even to use the offending dependencies in further computations.
+the rendering of the Error message is done by the helper function `formatLeftAsErrMsg`:
+
+```haskell
+-- | Right () is returned unchanged, 
+--   Left imports will be rendered as a human readable error message.
+formatLeftAsErrMsg :: Either [ModuleImportDeclarations] () -> Either [String] ()
+formatLeftAsErrMsg (Right ()) = Right ()
+formatLeftAsErrMsg (Left imports) = Left (map toString imports)
+  where
+    toString :: ModuleImportDeclarations -> String
+    toString (modName, imports) = ppModule modName ++ " imports [" ++ intercalate ", " (map (ppModule . impMod) imports) ++ "]"
+
+```
 
 ## Conclusion
 
+Thanks to Graphmod rolling our own depency checker worked like a charm.
 
+Adding such an automated dependency validation to our testsuite will help to maintain our architecture clean even if we don't pay attention while coding.
