@@ -7,18 +7,20 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Mon, 01 Aug 2022 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Sun, 07 Aug 2022 00:00:00 UT</lastBuildDate>
         <item>
-    <title>Dependency Validation of a CleanArchitecture application</title>
-    <link>https://thma.github.io//posts/2022-08-01-dependency-validation-of-clean-architecture.html</link>
+    <title>Dependency Validation of a Haskell Application</title>
+    <link>https://thma.github.io//posts/2022-08-07-dependency-validation-of-haskell-applications.html</link>
     <description><![CDATA[<div class="info">
-    <em>Posted on August  1, 2022
+    <em>Posted on August  7, 2022
     
         by Thomas Mahler
     </em><br/><br/>
 </div>
 
 <p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="abstract">Abstract</h2>
+<p>In this post I’m presenting a DependencyChecker to validate module dependencies in Haskell applications that can easily be integrated in CI/CD pipelines. The solution is based on the Graphmod dependency visualization tool.</p>
 <h2 id="introduction">Introduction</h2>
 <p>Welcome to yet another sequel of <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Clean Architecture with Haskell and Polysemy</a>.</p>
 <p>In my last to posts (<a href="https://thma.github.io/posts/2022-07-04-polysemy-and-warp.html">integration of Warp and Hal</a> and <a href="https://thma.github.io/posts/2022-07-17-configuration-of-a-polysemy-app.html">configuration of a polysemy app</a>) I was adding new features to my code base without caring much about one of the core rules of CleanArchitecture:</p>
@@ -31,15 +33,13 @@
 <p>In this post I’ll share my findings.</p>
 <h2 id="visualizing-module-dependencies-with-graphmod">Visualizing Module dependencies with graphmod</h2>
 <p>Whenever I think I had a brilliant idea, the Internet keeps telling me that someone else already had the same idea years ago…</p>
-<p>So before starting to write my own <em>Module Dependency Visualizer</em> tool, I asked the Internet if others already had the same idea. And – not so surprisingly – I found <a href="https://github.com/yav/graphmod">graphmod</a> by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs <a href="https://graphviz.org/">GraphViz</a> DOT models.</p>
+<p>So before starting to write my own <em>Module Dependency Visualizer</em> tool, I asked the Internet if others already had the same idea. And – not so surprisingly – I found <a href="https://github.com/yav/graphmod">Graphmod</a> by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs <a href="https://graphviz.org/">GraphViz</a> DOT models.</p>
 <p>After installing it with</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ex">cabal</span> install graphmod</span></code></pre></div>
 <p>The following command generates a detailed view on the dependencies in the PolySemyCleanArchitecture project:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ex">graphmod</span> <span class="kw">|</span> <span class="ex">dot</span> -Tpdf <span class="op">&gt;</span> dependencies.pdf</span></code></pre></div>
 <p>Here is the output:</p>
-<figure>
-<img src="../img/dependencies.png" alt="" /><figcaption>deps</figcaption>
-</figure>
+<p><img src="../img/dependencies.png" /></p>
 <p>As required by the CleanArchitecture model all dependencies are directed inwards. No dependencies are going from inner layers to more outward layers.</p>
 <p>Graphmod also provides additional flags to reduce clutter by pruning, to visualize the dependencies without package clustering, etc.<br />
 You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">the graphmod wiki</a>.</p>
@@ -205,13 +205,15 @@ You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">t
 <span id="cb15-5"><a href="#cb15-5" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Left</span> imports) <span class="ot">=</span> <span class="dt">Left</span> (<span class="fu">map</span> toString imports)</span>
 <span id="cb15-6"><a href="#cb15-6" aria-hidden="true"></a>  <span class="kw">where</span></span>
 <span id="cb15-7"><a href="#cb15-7" aria-hidden="true"></a><span class="ot">    toString ::</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true"></a>    toString (modName, imports) <span class="ot">=</span> ppModule modName <span class="op">++</span> <span class="st">&quot; imports [&quot;</span> <span class="op">++</span> intercalate <span class="st">&quot;, &quot;</span> (<span class="fu">map</span> (ppModule <span class="op">.</span> impMod) imports) <span class="op">++</span> <span class="st">&quot;]&quot;</span></span></code></pre></div>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true"></a>    toString (modName, imports) <span class="ot">=</span> ppModule modName <span class="op">++</span> <span class="st">&quot; imports &quot;</span> <span class="op">++</span> intercalate <span class="st">&quot;, &quot;</span> (<span class="fu">map</span> (ppModule <span class="op">.</span> impMod) imports)</span></code></pre></div>
 <h2 id="conclusion">Conclusion</h2>
 <p>Thanks to Graphmod rolling our own depency checker worked like a charm.</p>
-<p>Adding such an automated dependency validation to our testsuite will help to maintain our architecture clean even if we don’t pay attention while coding.</p>
+<p>In this post I used my PolysemyCleanArchitecture project as an example. However the dependency checker is flexible enough to validate quite different dependency requirements as well.</p>
+<p>For instance you could use it to limit the access to a database library to specific data-access modules in your codebase.</p>
+<p>Adding such an automated dependency validation to a testsuite may help to maintain dependency constraints automatically with each execution of the CI/CD pipeline.</p>
 ]]></description>
-    <pubDate>Mon, 01 Aug 2022 00:00:00 UT</pubDate>
-    <guid>https://thma.github.io//posts/2022-08-01-dependency-validation-of-clean-architecture.html</guid>
+    <pubDate>Sun, 07 Aug 2022 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2022-08-07-dependency-validation-of-haskell-applications.html</guid>
     <dc:creator>Thomas Mahler</dc:creator>
 </item>
 <item>

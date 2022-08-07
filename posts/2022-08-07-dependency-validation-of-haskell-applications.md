@@ -1,13 +1,18 @@
 ---
-title: Dependency Validation of a CleanArchitecture application
+title: Dependency Validation of a Haskell Application
 author: Thomas Mahler
-tags: clean-architecture, haskell, polysemy, algebraic-effects, domain-driven-design, ports-and-adapters, hexagonal-architecture, onion-architecture, servant, warp, io-monad, testability, architecture, algebraic, polysemy-library, polysemy-effects, configuration, dependency-injection, depndency, graphmod
+tags: clean-architecture, haskell, polysemy, algebraic-effects, domain-driven-design, ports-and-adapters, hexagonal-architecture, onion-architecture, servant, warp, hal, aws, io-monad, testability, architecture, algebraic, polysemy-library, polysemy-effects, configuration, dependency-injection, dependency, graphmod, dependency-constraints, graphmod
 ---
 
 
 [![Actions Status](https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg)](https://github.com/thma/PolysemyCleanArchitecture/actions)
 <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
 
+
+## Abstract
+
+In this post I'm presenting a DependencyChecker to validate module dependencies in Haskell applications that can easily be integrated in CI/CD pipelines.
+The solution is based on the Graphmod dependency visualization tool.
 
 ## Introduction
 
@@ -34,7 +39,7 @@ In this post I'll share my findings.
 Whenever I think I had a brilliant idea, the Internet keeps telling me that someone else already had the same idea years ago...
 
 So before starting to write my own *Module Dependency Visualizer* tool, I asked the Internet if others already had the same idea. 
-And &ndash; not so surprisingly &ndash; I found [graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs [GraphViz](https://graphviz.org/) DOT models.
+And &ndash; not so surprisingly &ndash; I found [Graphmod](https://github.com/yav/graphmod) by Iavor S. Diatchki. It analyses cabal or stack based projects and outputs [GraphViz](https://graphviz.org/) DOT models.
 
 After installing it with
 
@@ -50,7 +55,7 @@ graphmod | dot -Tpdf > dependencies.pdf
 
 Here is the output:
 
-![deps](../img/dependencies.png)
+![](../img/dependencies.png)
 
 As required by the CleanArchitecture model all dependencies are directed inwards. No dependencies are going from inner layers to more outward layers.
 
@@ -284,7 +289,7 @@ formatLeftAsErrMsg (Right ()) = Right ()
 formatLeftAsErrMsg (Left imports) = Left (map toString imports)
   where
     toString :: ModuleImportDeclarations -> String
-    toString (modName, imports) = ppModule modName ++ " imports [" ++ intercalate ", " (map (ppModule . impMod) imports) ++ "]"
+    toString (modName, imports) = ppModule modName ++ " imports " ++ intercalate ", " (map (ppModule . impMod) imports)
 
 ```
 
@@ -292,4 +297,8 @@ formatLeftAsErrMsg (Left imports) = Left (map toString imports)
 
 Thanks to Graphmod rolling our own depency checker worked like a charm.
 
-Adding such an automated dependency validation to our testsuite will help to maintain our architecture clean even if we don't pay attention while coding.
+In this post I used my PolysemyCleanArchitecture project as an example. However the dependency checker is flexible enough to validate quite different dependency requirements as well. 
+
+For instance you could use it to limit the access to a database library to specific data-access modules in your codebase.
+
+Adding such an automated dependency validation to a testsuite may help to maintain dependency constraints automatically with each execution of the CI/CD pipeline.
