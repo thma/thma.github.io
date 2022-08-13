@@ -157,7 +157,7 @@ allFiles dir = do
 
 #### Always fix things upstream
 
-As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided an additional [pull request](https://github.com/yav/graphmod/pull/40) that will allow to use the `Graphmod.Utils` via a dependency declaration in your package.yaml or cabal file. As long as version 1.4.5 is not available on Hackage we'll have to use the respective version directly from github:
+As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided an additional [pull request](https://github.com/yav/graphmod/pull/40) that will allow to use the `Graphmod.Utils` via a dependency declaration in your `package.yaml` or cabal file. As long as version 1.4.5 is not available on Hackage we'll have to use the respective version directly from Github by adding the following stanza to `stack.yaml`:
 
 ```yaml
 extra-deps:
