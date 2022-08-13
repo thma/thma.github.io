@@ -81,7 +81,7 @@ You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">t
 <span id="cb5-10"><a href="#cb5-10" aria-hidden="true"></a> (<span class="st">&quot;Domain&quot;</span>,<span class="st">&quot;Domain&quot;</span>)]</span></code></pre></div>
 <p>The overall idea of the dependency check is to verify for all Haskell modules in our “src” folder that all their import statements are either contained in this list or are imports of some external libraries.</p>
 <h3 id="getting-a-list-of-all-import-declarations-of-all-.hs-files">Getting a list of all import declarations of all .hs files</h3>
-<p>In this step I will reuse functions and types from Graphmod. Graphmod comes with a <code>Utils</code> module that provides a function <code>parseFile :: FilePath -&gt; IO (ModName,[Import])</code> which parses a file into a representation of its import declaration section. <code>ModName</code> and <code>Import</code> are defined as follows:</p>
+<p>In this step I will reuse functions and types from Graphmod. Graphmod comes with a <code>Graphmod.Utils</code> module that provides a function <code>parseFile :: FilePath -&gt; IO (ModName,[Import])</code> which parses a file into a representation of its import declaration section. <code>ModName</code> and <code>Import</code> are defined as follows:</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Import</span>    <span class="ot">=</span> <span class="dt">Import</span> {<span class="ot"> impMod ::</span> <span class="dt">ModName</span>,<span class="ot"> impType ::</span> <span class="dt">ImpType</span> } <span class="kw">deriving</span> <span class="dt">Show</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">ImpType</span>   <span class="ot">=</span> <span class="dt">NormalImp</span> <span class="op">|</span> <span class="dt">SourceImp</span> <span class="kw">deriving</span> (<span class="dt">Show</span>,<span class="dt">Eq</span>,<span class="dt">Ord</span>)</span>
@@ -113,84 +113,87 @@ You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">t
 <span id="cb7-21"><a href="#cb7-21" aria-hidden="true"></a>    )</span>
 <span id="cb7-22"><a href="#cb7-22" aria-hidden="true"></a>    qualifiedFiles</span></code></pre></div>
 <h4 id="always-fix-things-upstream">Always fix things upstream</h4>
-<p>As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a <a href="https://github.com/yav/graphmod/pull/40">pull request</a> that will allow to use the <code>Utils</code> module when including Graphmod in your package.yaml or cabal file.</p>
+<p>As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided an additional <a href="https://github.com/yav/graphmod/pull/40">pull request</a> that will allow to use the <code>Graphmod.Utils</code> via a dependency declaration in your package.yaml or cabal file. As long as version 1.4.5 is not available on Hackage we’ll have to use the respective version directly from github:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="fu">extra-deps</span><span class="kw">:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">git</span><span class="kw">:</span><span class="at"> https://github.com/yav/graphmod.git</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a><span class="at">    </span><span class="fu">commit</span><span class="kw">:</span><span class="at"> 79cc6502b48e577632d57b3a9b479436b0739726</span></span></code></pre></div>
 <h3 id="validating-the-module-import-declarations">Validating the module import declarations</h3>
 <p>Now that we have all <code>ModuleImportDeclarations</code> collected in a list we must validate each of them. We start with a function that validates the import declaration section of a single module as represented by a <code>ModuleImportDeclarations</code> instance. In order to validate this section we have to provide two more items:</p>
 <ol type="1">
 <li><p>a list <code>allPackages</code> containing all packages under consideration (in our case the <code>cleanArchitecturePackages</code> as defined above)</p></li>
 <li><p>a list of all compliant dependency pairings between elements of the <code>allPackages</code> list, in our case the <code>cleanArchitectureCompliantDeps cleanArchitecturePackages</code> as defined above</p></li>
 </ol>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | this function verifies a ModuleImportDeclarations instance</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="co">--   (that is all import declarations of a given Haskell module.)</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a><span class="co">--   If all imports comply to the rules Right () is returned.</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a><span class="co">--   If offending imports are found, they are returned via Left.</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a><span class="ot">verifyImportDecl ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ModuleImportDeclarations</span> ()</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>verifyImportDecl allPackages compliantDependencies (packageFrom, imports) <span class="ot">=</span></span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a>  <span class="kw">let</span> offending <span class="ot">=</span> <span class="fu">filter</span> (<span class="fu">not</span> <span class="op">.</span> verify packageFrom) imports</span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a>   <span class="kw">in</span> <span class="kw">if</span> <span class="fu">null</span> offending</span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a>        <span class="kw">then</span> <span class="dt">Right</span> ()</span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a>        <span class="kw">else</span> <span class="dt">Left</span> (packageFrom, offending)</span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true"></a>  <span class="kw">where</span></span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true"></a>    <span class="co">-- | verify checks a single import declaration.</span></span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true"></a>    <span class="co">--   An import is compliant iff:</span></span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true"></a>    <span class="co">--   1. it refers to some external package which not member of the &#39;packages&#39; list or</span></span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true"></a>    <span class="co">--   2. the package dependency is a member of the compliant dependencies between elements of the &#39;packages&#39; list.</span></span>
-<span id="cb8-16"><a href="#cb8-16" aria-hidden="true"></a><span class="ot">    verify ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
-<span id="cb8-17"><a href="#cb8-17" aria-hidden="true"></a>    verify pFrom imp <span class="ot">=</span></span>
-<span id="cb8-18"><a href="#cb8-18" aria-hidden="true"></a>      importPackage imp <span class="ot">`notElem`</span> allPackages</span>
-<span id="cb8-19"><a href="#cb8-19" aria-hidden="true"></a>        <span class="op">||</span> (modulePackage pFrom, importPackage imp) <span class="ot">`elem`</span> compliantDependencies</span>
-<span id="cb8-20"><a href="#cb8-20" aria-hidden="true"></a></span>
-<span id="cb8-21"><a href="#cb8-21" aria-hidden="true"></a></span>
-<span id="cb8-22"><a href="#cb8-22" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from an Import definition</span></span>
-<span id="cb8-23"><a href="#cb8-23" aria-hidden="true"></a><span class="ot">importPackage ::</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
-<span id="cb8-24"><a href="#cb8-24" aria-hidden="true"></a>importPackage imp <span class="ot">=</span> modulePackage (impMod imp)</span>
-<span id="cb8-25"><a href="#cb8-25" aria-hidden="true"></a></span>
-<span id="cb8-26"><a href="#cb8-26" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from a ModName definition</span></span>
-<span id="cb8-27"><a href="#cb8-27" aria-hidden="true"></a><span class="ot">modulePackage ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
-<span id="cb8-28"><a href="#cb8-28" aria-hidden="true"></a>modulePackage (q, _m) <span class="ot">=</span> intercalate <span class="st">&quot;.&quot;</span> (qualifierNodes q)</span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="co">-- | this function verifies a ModuleImportDeclarations instance</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a><span class="co">--   (that is all import declarations of a given Haskell module.)</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a><span class="co">--   If all imports comply to the rules Right () is returned.</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a><span class="co">--   If offending imports are found, they are returned via Left.</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a><span class="ot">verifyImportDecl ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ModuleImportDeclarations</span> ()</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>verifyImportDecl allPackages compliantDependencies (packageFrom, imports) <span class="ot">=</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>  <span class="kw">let</span> offending <span class="ot">=</span> <span class="fu">filter</span> (<span class="fu">not</span> <span class="op">.</span> verify packageFrom) imports</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a>   <span class="kw">in</span> <span class="kw">if</span> <span class="fu">null</span> offending</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true"></a>        <span class="kw">then</span> <span class="dt">Right</span> ()</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true"></a>        <span class="kw">else</span> <span class="dt">Left</span> (packageFrom, offending)</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true"></a>    <span class="co">-- | verify checks a single import declaration.</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true"></a>    <span class="co">--   An import is compliant iff:</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true"></a>    <span class="co">--   1. it refers to some external package which not member of the &#39;packages&#39; list or</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true"></a>    <span class="co">--   2. the package dependency is a member of the compliant dependencies between elements of the &#39;packages&#39; list.</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true"></a><span class="ot">    verify ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true"></a>    verify pFrom imp <span class="ot">=</span></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true"></a>      importPackage imp <span class="ot">`notElem`</span> allPackages</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true"></a>        <span class="op">||</span> (modulePackage pFrom, importPackage imp) <span class="ot">`elem`</span> compliantDependencies</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true"></a></span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true"></a></span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from an Import definition</span></span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true"></a><span class="ot">importPackage ::</span> <span class="dt">Import</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true"></a>importPackage imp <span class="ot">=</span> modulePackage (impMod imp)</span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true"></a></span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true"></a><span class="co">-- | this function returns the Package information from a ModName definition</span></span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true"></a><span class="ot">modulePackage ::</span> <span class="dt">ModName</span> <span class="ot">-&gt;</span> <span class="dt">Package</span></span>
+<span id="cb9-28"><a href="#cb9-28" aria-hidden="true"></a>modulePackage (q, _m) <span class="ot">=</span> intercalate <span class="st">&quot;.&quot;</span> (qualifierNodes q)</span></code></pre></div>
 <p>As a next step we define a function that maps the function <code>verifyImportDecl</code> over the complete list of all <code>ModuleImportDeclarations</code>. This results in a List of Eithers. I’m using <code>partitionEither</code> to transform the result into an <code>Either [(ModName, [Import])] ()</code>:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="co">-- | verify the dependencies of a list of module import declarations. The results are collected into an &#39;Either [(ModName, [Import])] ()&#39; which will be easier to handle in subsequent steps.</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a><span class="ot">verifyAllDependencies ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a>verifyAllDependencies allPackages compliantDependencies imports<span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a>  <span class="kw">let</span> results <span class="ot">=</span> <span class="fu">map</span> (verifyImportDecl allPackages compliantDependencies) imports</span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a>  <span class="kw">let</span> (errs, _compliant) <span class="ot">=</span> partitionEithers results</span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a>  <span class="kw">if</span> <span class="fu">null</span> errs</span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a>    <span class="kw">then</span> <span class="dt">Right</span> ()</span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a>    <span class="kw">else</span> <span class="dt">Left</span> errs</span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="co">-- | verify the dependencies of a list of module import declarations. The results are collected into an &#39;Either [(ModName, [Import])] ()&#39; which will be easier to handle in subsequent steps.</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a><span class="ot">verifyAllDependencies ::</span> [<span class="dt">Package</span>] <span class="ot">-&gt;</span> [(<span class="dt">Package</span>, <span class="dt">Package</span>)] <span class="ot">-&gt;</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a>verifyAllDependencies allPackages compliantDependencies imports<span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a>  <span class="kw">let</span> results <span class="ot">=</span> <span class="fu">map</span> (verifyImportDecl allPackages compliantDependencies) imports</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true"></a>  <span class="kw">let</span> (errs, _compliant) <span class="ot">=</span> partitionEithers results</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true"></a>  <span class="kw">if</span> <span class="fu">null</span> errs</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true"></a>    <span class="kw">then</span> <span class="dt">Right</span> ()</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true"></a>    <span class="kw">else</span> <span class="dt">Left</span> errs</span></code></pre></div>
 <p>We can use the generic <code>verifyAllDependencies</code> to create a specific <code>verifyCleanArchitectureDependencies</code> function which uses <code>cleanArchitecturePackages</code> and <code>cleanArchitectureCompliantDeps</code> to define the dependency rules for our CleanArchitecture project:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="co">-- | verify a list of ModuleImportDeclarations to comply to the clean architecture dependency rules.</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a><span class="ot">verifyCleanArchitectureDependencies ::</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a>verifyCleanArchitectureDependencies <span class="ot">=</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a>  verifyAllDependencies</span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true"></a>    cleanArchitecturePackages</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true"></a>    (cleanArchitectureCompliantDeps cleanArchitecturePackages)</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="co">-- | verify a list of ModuleImportDeclarations to comply to the clean architecture dependency rules.</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a><span class="ot">verifyCleanArchitectureDependencies ::</span> [<span class="dt">ModuleImportDeclarations</span>] <span class="ot">-&gt;</span> <span class="dt">Either</span> [(<span class="dt">ModName</span>, [<span class="dt">Import</span>])] ()</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>verifyCleanArchitectureDependencies <span class="ot">=</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>  verifyAllDependencies</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>    cleanArchitecturePackages</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>    (cleanArchitectureCompliantDeps cleanArchitecturePackages)</span></code></pre></div>
 <h2 id="using-the-dependency-checker-in-test-cases">Using the dependency checker in test cases</h2>
 <p>Using the dependency checker in test cases is quite straighforward. First load all import declaractions than validate them:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Test.Hspec</span> ( hspec, describe, it, shouldBe, <span class="dt">Spec</span> )</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">DependencyChecker</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>    ( <span class="dt">ModName</span>,</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>      <span class="dt">ImpType</span>(<span class="op">..</span>),</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>      <span class="dt">Import</span>(<span class="op">..</span>),</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>      fromHierarchy,</span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true"></a>      verifyCleanArchitectureDependencies,</span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true"></a>      allImportDeclarations )</span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true"></a></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true"></a>main <span class="ot">=</span> hspec spec</span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true"></a></span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true"></a>spec <span class="ot">=</span></span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true"></a>  describe <span class="st">&quot;The Dependency Checker&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true"></a>    it <span class="st">&quot;ensures that all modules comply to the outside-in rule&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
-<span id="cb11-17"><a href="#cb11-17" aria-hidden="true"></a>      allImports <span class="ot">&lt;-</span> allImportDeclarations <span class="st">&quot;src&quot;</span></span>
-<span id="cb11-18"><a href="#cb11-18" aria-hidden="true"></a>      formatLeftAsErrMsg </span>
-<span id="cb11-19"><a href="#cb11-19" aria-hidden="true"></a>        (verifyCleanArchitectureDependencies allImports) <span class="ot">`shouldBe`</span> <span class="dt">Right</span> ()</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Test.Hspec</span> ( hspec, describe, it, shouldBe, <span class="dt">Spec</span> )</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">DependencyChecker</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true"></a>    ( <span class="dt">ModName</span>,</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true"></a>      <span class="dt">ImpType</span>(<span class="op">..</span>),</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true"></a>      <span class="dt">Import</span>(<span class="op">..</span>),</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true"></a>      fromHierarchy,</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true"></a>      verifyCleanArchitectureDependencies,</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true"></a>      allImportDeclarations )</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true"></a></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true"></a>main <span class="ot">=</span> hspec spec</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true"></a>spec <span class="ot">=</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true"></a>  describe <span class="st">&quot;The Dependency Checker&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true"></a>    it <span class="st">&quot;ensures that all modules comply to the outside-in rule&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true"></a>      allImports <span class="ot">&lt;-</span> allImportDeclarations <span class="st">&quot;src&quot;</span></span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true"></a>      formatLeftAsErrMsg </span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true"></a>        (verifyCleanArchitectureDependencies allImports) <span class="ot">`shouldBe`</span> <span class="dt">Right</span> ()</span></code></pre></div>
 <p>As you can see from executing the tests with <code>stack test</code>, the dependency checker does not find any issues in the codebase:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="ex">CleanArchitecture</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a>  <span class="ex">The</span> Dependency Checker</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true"></a>    <span class="ex">ensures</span> that all modules comply to the outside-in rule</span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="ex">CleanArchitecture</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a>  <span class="ex">The</span> Dependency Checker</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>    <span class="ex">ensures</span> that all modules comply to the outside-in rule</span></code></pre></div>
 <p>But if we add an offending dependency to some of the modules, say adding</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span></code></pre></div>
 <p>to <code>Domain.ReservationDomain</code> and to <code>UseCases.ReservationUseCase</code>, we’ll get a failure with the following message:</p>
 <pre><code>Failures:
 
@@ -202,14 +205,14 @@ You’ll find a few examples in <a href="https://github.com/yav/graphmod/wiki">t
           &quot;UseCases.ReservationUseCase imports InterfaceAdapters.Config&quot;]
 </code></pre>
 <p>the rendering of the Error message is done by the helper function <code>formatLeftAsErrMsg</code>:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true"></a><span class="co">-- | Right () is returned unchanged, </span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true"></a><span class="co">--   Left imports will be rendered as a human readable error message.</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true"></a><span class="ot">formatLeftAsErrMsg ::</span> <span class="dt">Either</span> [<span class="dt">ModuleImportDeclarations</span>] () <span class="ot">-&gt;</span> <span class="dt">Either</span> [<span class="dt">String</span>] ()</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Right</span> ()) <span class="ot">=</span> <span class="dt">Right</span> ()</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Left</span> imports) <span class="ot">=</span> <span class="dt">Left</span> (<span class="fu">map</span> toString imports)</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true"></a>  <span class="kw">where</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true"></a><span class="ot">    toString ::</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true"></a>    toString (modName, imports) <span class="ot">=</span> ppModule modName <span class="op">++</span> <span class="st">&quot; imports &quot;</span> <span class="op">++</span> intercalate <span class="st">&quot;, &quot;</span> (<span class="fu">map</span> (ppModule <span class="op">.</span> impMod) imports)</span></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true"></a><span class="co">-- | Right () is returned unchanged, </span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true"></a><span class="co">--   Left imports will be rendered as a human readable error message.</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true"></a><span class="ot">formatLeftAsErrMsg ::</span> <span class="dt">Either</span> [<span class="dt">ModuleImportDeclarations</span>] () <span class="ot">-&gt;</span> <span class="dt">Either</span> [<span class="dt">String</span>] ()</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Right</span> ()) <span class="ot">=</span> <span class="dt">Right</span> ()</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true"></a>formatLeftAsErrMsg (<span class="dt">Left</span> imports) <span class="ot">=</span> <span class="dt">Left</span> (<span class="fu">map</span> toString imports)</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true"></a>  <span class="kw">where</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true"></a><span class="ot">    toString ::</span> <span class="dt">ModuleImportDeclarations</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true"></a>    toString (modName, imports) <span class="ot">=</span> ppModule modName <span class="op">++</span> <span class="st">&quot; imports &quot;</span> <span class="op">++</span> intercalate <span class="st">&quot;, &quot;</span> (<span class="fu">map</span> (ppModule <span class="op">.</span> impMod) imports)</span></code></pre></div>
 <h2 id="conclusion">Conclusion</h2>
 <p>Thanks to Graphmod rolling our own depency checker worked like a charm.</p>
 <p>In this post I used my PolysemyCleanArchitecture project as an example. However the dependency checker is flexible enough to validate quite different dependency requirements as well.</p>

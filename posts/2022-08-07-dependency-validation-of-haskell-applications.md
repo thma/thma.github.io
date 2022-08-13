@@ -116,7 +116,7 @@ The overall idea of the dependency check is to verify for all Haskell modules in
 
 ### Getting a list of all import declarations of all .hs files
 
-In this step I will reuse functions and types from Graphmod. Graphmod comes with a `Utils` module that provides a function `parseFile :: FilePath -> IO (ModName,[Import])` which parses a file into a representation of its import declaration section. `ModName` and `Import` are defined as follows:
+In this step I will reuse functions and types from Graphmod. Graphmod comes with a `Graphmod.Utils` module that provides a function `parseFile :: FilePath -> IO (ModName,[Import])` which parses a file into a representation of its import declaration section. `ModName` and `Import` are defined as follows:
 
 ```haskell
 data Import    = Import { impMod :: ModName, impType :: ImpType } deriving Show
@@ -157,7 +157,13 @@ allFiles dir = do
 
 #### Always fix things upstream
 
-As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided a [pull request](https://github.com/yav/graphmod/pull/40) that will allow to use the `Utils` module when including Graphmod in your package.yaml or cabal file.
+As of version 1.4.4 Graphmod can not be included as a library dependency via Cabal or Stack. This will be fixed in 1.4.5. I have provided an additional [pull request](https://github.com/yav/graphmod/pull/40) that will allow to use the `Graphmod.Utils` via a dependency declaration in your package.yaml or cabal file. As long as version 1.4.5 is not available on Hackage we'll have to use the respective version directly from github:
+
+```yaml
+extra-deps:
+  - git: https://github.com/yav/graphmod.git
+    commit: 79cc6502b48e577632d57b3a9b479436b0739726
+```
 
 ### Validating the module import declarations
 
