@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>LambdaBlog: lambda is not a four letter word</title>
+    <link href="https://thma.github.io//atom.xml" rel="self" />
+    <link href="https://thma.github.io/" />
+    <id>https://thma.github.io//atom.xml</id>
+    <author>
+        <name>Thomas Mahler</name>
+        <email>Thomas.Mahler@ista.com</email>
+    </author>
+    <updated>Unknown</updated>
+    
+</feed>

@@ -60,11 +60,18 @@
     </em><br /><br />
 </div>
 
-<p>This post is part of the <a href="https://adventofhaskell.com/">Advent of Haskell 2020 series</a>. Hence, I tried to keep the content easy and enjoyable but still present some food for thought!</p>
-<p>Some time ago I came across an interesting post on the Clean-Coder-Blog, which kept me busy for weeks until I finally decided to write this article.</p>
-<p>In his blog-post Uncle Bob tries to reconcile concepts from both Functional Programming and Object Oriented Programming by explaining that both approaches are not mutually exclusive but both provide useful principles that go very well together and in fact are complementary:</p>
+<p>This post is part of the <a href="https://adventofhaskell.com/">Advent of Haskell 2020 series</a>. Hence, I tried to keep the content
+easy and enjoyable but still present some food for thought!</p>
+<p>Some time ago I came across an interesting post on the Clean-Coder-Blog,
+which kept me busy for weeks until I finally decided to write this article.</p>
+<p>In his blog-post Uncle Bob tries to reconcile concepts from both Functional Programming and Object Oriented Programming
+by explaining that both approaches are not mutually exclusive but both provide useful principles that go very well
+together and in fact are complementary:</p>
 <blockquote>
-<p>In this blog I will make the case that while OO and FP are orthogonal, they are not mutually exclusive. That a good functional program can (and should) be object oriented. And that a good object oriented program can (and should) be functional.</p>
+<p>In this blog I will make the case that while OO and FP are orthogonal,
+they are not mutually exclusive.
+That a good functional program can (and should) be object oriented.
+And that a good object oriented program can (and should) be functional.</p>
 <p><a href="https://blog.cleancoder.com/uncle-bob/2018/04/13/FPvsOO.html">quoted from Uncle Bob’s Clean Coder Blog</a></p>
 </blockquote>
 <p>He begins his argument by reducing FP and OOP each to a single central guiding principle in order to contrast the essential features of these two approaches as clearly as possible:</p>
@@ -73,13 +80,23 @@
 <blockquote>
 <p>The technique of using dynamic polymorphism to call functions without the source code of the caller depending upon the source code of the callee.</p>
 </blockquote>
-<p>With this short statement Uncle Bob points to the core of object orientation since its first incarnation in the Smalltalk language:</p>
-<p>In an OO language a call of methods on a target object is dispatched based on the target object’s type, its <code>class</code>. So a method call <code>shape.draw()</code> may invoke different code based on the <code>class</code> of the actual shape object:</p>
+<p>With this short statement Uncle Bob points to the core of object orientation since its first incarnation in
+the Smalltalk language:</p>
+<p>In an OO language a call of methods on a target object is dispatched based on the target object’s type, its <code>class</code>.
+So a method call <code>shape.draw()</code> may invoke different code based on the <code>class</code> of the actual shape object:</p>
 <p>The code of the <code>draw</code> method of class <code>Rectangle</code> may be different from the code in <code>Circle.draw()</code>.</p>
-<p>Client code will just call <code>shape.draw()</code>, not even knowing which actual <code>Shape</code> sub-class it’s working on. This kind of polymorphism provides a very useful decoupling of clients from the target objects by using the methods of the baseclass <code>Shape</code> as the API for all Objects inheriting <code>Shape</code>.</p>
-<p>This mechanism allows to build elegant design like the <a href="https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller">Model-View-Controller (MVC)</a> pattern which is at the core of Smalltalks GUI and which influenced many similar designs in other OO-languages.</p>
+<p>Client code will just call <code>shape.draw()</code>, not even knowing which actual <code>Shape</code> sub-class it’s working on. This kind of
+polymorphism provides a very useful decoupling of clients from the target objects by using the methods of the baseclass <code>Shape</code>
+as the API for all Objects inheriting <code>Shape</code>.</p>
+<p>This mechanism allows to build elegant design like the
+<a href="https://en.wikipedia.org/wiki/Model%E2%80%93view%E2%80%93controller">Model-View-Controller (MVC)</a> pattern
+which is at the core of Smalltalks GUI and which influenced many similar designs in other OO-languages.</p>
 <blockquote>
-<p>MVC is the seminal insight of the whole field of graphical user interfaces. I believe the MVC work was the first to <strong>describe</strong> and implement <strong>software constructs in terms of their responsibilities.</strong> I also believe that MVC was the first significant <strong>use of protocols to define components</strong> instead of using concrete implementations — each controller class had a certain set of messages it had to respond to, as did each view class, but otherwise there were no constraints on what they did and how they did it.</p>
+<p>MVC is the seminal insight of the whole field of graphical user interfaces.
+I believe the MVC work was the first to <strong>describe</strong> and implement <strong>software constructs in terms of their responsibilities.</strong>
+I also believe that MVC was the first significant <strong>use of protocols to define components</strong> instead of using
+concrete implementations — each controller class had a certain set of messages it had to respond to,
+as did each view class, but otherwise there were no constraints on what they did and how they did it.</p>
 <p><a href="http://wiki.c2.com/?ModelViewControllerHistory">quoted from the C2 Wiki</a></p>
 </blockquote>
 <p>This quote conveys two major achievements of OOP:</p>
@@ -96,227 +113,293 @@
 </blockquote>
 <p>Referential transparency is implying <strong>purity</strong> as explained in the following definition from Wikipedia:</p>
 <blockquote>
-<p>An expression is called <strong>referentially transparent if it can be replaced with its corresponding value</strong> (and vice-versa) without changing the program’s behavior. This <strong>requires that the expression be pure</strong>, that is to say <strong>the expression value must be the same for the same inputs</strong> and its <strong>evaluation must have no side effects</strong>.</p>
+<p>An expression is called <strong>referentially transparent if it can be replaced with its corresponding value</strong>
+(and vice-versa) without changing the program’s behavior.
+This <strong>requires that the expression be pure</strong>, that is to say <strong>the expression value must be the same for the
+same inputs</strong> and its <strong>evaluation must have no side effects</strong>.</p>
 <p><a href="https://en.wikipedia.org/wiki/Referential_transparency">quoted from Wikipedia</a></p>
 </blockquote>
-<p>The second part of Uncle Bob’s statement may be implied by this definition, but I prefer to see it as separate yet closely related principle, namely <strong>immutability</strong>:</p>
+<p>The second part of Uncle Bob’s statement may be implied by this definition, but I prefer to see it as separate
+yet closely related principle, namely <strong>immutability</strong>:</p>
 <blockquote>
-<p>In object-oriented and functional programming, an immutable object (unchangeable object) is an object whose <strong>state cannot be modified after it is created</strong>. […]</p>
+<p>In object-oriented and functional programming, an immutable object (unchangeable object) is an object whose <strong>state
+cannot be modified after it is created</strong>. […]</p>
 <p><a href="https://en.wikipedia.org/wiki/Immutable_object">Quoted from Wikipedia</a></p>
 </blockquote>
 <h2 id="there-is-no-fp-vs-oop">There is no FP vs OOP</h2>
 <p>After this dense characterization of the two programming paradigms Uncle Bob continues his arguments like follows:</p>
-<p>The concepts of Polymorphism and Referential Transparency are orthogonal. You can have Polymorphism without Referential Transparency – and vice versa.</p>
-<p>But orthogonality does not imply that both concepts are mutually exclusive. It is possible to have languages that support both Dynamic Polymorphism and Referential Transparency. It is not only possible, but even desirable to combine both concepts:</p>
+<p>The concepts of Polymorphism and Referential Transparency are orthogonal. You can have Polymorphism without
+Referential Transparency – and vice versa.</p>
+<p>But orthogonality does not imply that both concepts are mutually exclusive.
+It is possible to have languages that support both Dynamic Polymorphism and Referential Transparency.
+It is not only possible, but even desirable to combine both concepts:</p>
 <ol type="1">
 <li><p>Dynamic Polymorphism is desirable as it allows building strongly decoupled designs:</p>
 <blockquote>
-<p>Dependencies can be inverted across architectural boundaries. They are testable using Mocks and Fakes and other kinds of Test Doubles. Modules can be modified without forcing changes to other modules. This makes such systems much easier to change and improve.</p>
+<p>Dependencies can be inverted across architectural boundaries.
+They are testable using Mocks and Fakes and other kinds of Test Doubles.
+Modules can be modified without forcing changes to other modules.
+This makes such systems much easier to change and improve.</p>
 <p>Uncle Bob</p>
 </blockquote></li>
-<li><p>Referential Transparency is desirable as it allows designs that are much easier to understand, to reason about, to change and to improve. It also allows designs that are much better suited for scalability and concurrency as the chances of race conditions etc. are drastically reduced.</p></li>
+<li><p>Referential Transparency is desirable as it allows designs that are much easier to understand, to reason about,
+to change and to improve. It also allows designs that are much better suited for scalability and concurrency
+as the chances of race conditions etc. are drastically reduced.</p></li>
 </ol>
-<p>Uncle Bob concludes that Dynamic Polymorphism and Referential Transparency are both desirable as part of software systems:</p>
+<p>Uncle Bob concludes that Dynamic Polymorphism and Referential Transparency are both desirable as part
+of software systems:</p>
 <blockquote>
-<p>A system that is built on both OO and FP principles will <strong>maximize flexibility, maintainability, testability, simplicity, and robustness</strong>.</p>
+<p>A system that is built on both OO and FP principles will <strong>maximize flexibility,
+maintainability, testability, simplicity, and robustness</strong>.</p>
 <p>Uncle Bob</p>
 </blockquote>
 <p>In the following sections I will have a look at the Haskell language to see how the principles of Ad-hoc Polymorphism and Referential Transparency are covered in our favourite language.</p>
 <h2 id="ad-hoc-polymorphism-and-referential-transparency-in-haskell">Ad-hoc Polymorphism and Referential Transparency in Haskell</h2>
 <ol type="1">
 <li><p><strong>Referential Transparency</strong></p>
-<p>Haskell is one of the rare incarnations of a purely functional language. So it goes without saying that Referential Transparency, Purity and Immutability are a given in Haskell. Yes, there are things like <code>unsafePerformIO</code> or <code>IORef</code> but overall it’s very easy to write clean code in Haskell due to the strict separation of pure and impure code by making side effects directly visibly in functions type signatures.</p>
-<p>Referential Transparency in Haskell is so much a given that it’s quite possible to apply equational reasoning to proof certain properties of Haskell programs. See for example the following <a href="https://thma.github.io/LambdaBlog/posts/2020-04-17-maybe-functor-law-proof.html">Proof of Functor laws for the Maybe type</a>. What’s remarkable here is that you can use the same language to write your code and to reason about it. This is not possible in languages that do not provide Referential Transparency and Immutability. To reason about programs in such languages you have to use external models like an abstract stack + register machine.</p></li>
+<p>Haskell is one of the rare incarnations of a purely functional language.
+So it goes without saying that Referential Transparency, Purity and Immutability are a given in Haskell.
+Yes, there are things like <code>unsafePerformIO</code> or <code>IORef</code> but overall
+it’s very easy to write clean code in Haskell due to the strict separation of pure and impure code by making side effects directly visibly in functions type signatures.</p>
+<p>Referential Transparency in Haskell is so much a given that it’s quite possible to apply
+equational reasoning to proof certain properties of Haskell programs.
+See for example the following
+<a href="https://thma.github.io/LambdaBlog/posts/2020-04-17-maybe-functor-law-proof.html">Proof of Functor laws for the Maybe type</a>.
+What’s remarkable here is that you can use the same language to write your code and to
+reason about it.
+This is not possible in languages that do not provide Referential Transparency and Immutability. To reason about
+programs in such languages you have to use external models like an abstract stack + register machine.</p></li>
 <li><p><strong>Ad-hoc Polymorphism</strong></p>
-<p>Being able to overload functions and operators with different implementations depending on the type of its arguments is called Ad-hoc Polymorphism. For example, the <code>+</code> operator does something entirely different when applied to floating-point values as compared to when applied to integers. In Haskell, this kind of polymorphism is achieved with type classes and class instances.</p>
-<p>Haskell’s type classes are quite different from the classes in OOP languages. They have more in common with interfaces in that they specify a set of functions with their respective type signatures to be implemented by instance declarations.</p></li>
+<p>Being able to overload functions and operators with different implementations depending on the
+type of its arguments is called Ad-hoc Polymorphism.
+For example, the <code>+</code> operator does something entirely different when applied to floating-point
+values as compared to when applied to integers. In Haskell, this kind of polymorphism is achieved with
+type classes and class instances.</p>
+<p>Haskell’s type classes are quite different from the classes in OOP languages.
+They have more in common with interfaces in that they specify a set of functions with their respective type
+signatures to be implemented by instance declarations.</p></li>
 </ol>
 <h2 id="a-short-case-study">A short case study</h2>
 <p>In this section I’m showcasing how these two concepts are supported in Haskell and how they can be combined without sacrificing FP principles.</p>
-<p>Let’s have a look at a simple example that is frequently used in introductions to OOP: a class hierarchy representing geometrical shapes. In a typical OO language, we would have an abstract base class <code>Shape</code> which specifies a set of methods, and concrete classes <code>Rect</code>, <code>Circle</code>, <code>Triangle</code>, etc. which would implement specific behaviour.</p>
+<p>Let’s have a look at a simple example that is frequently used in introductions to OOP:
+a class hierarchy representing geometrical shapes. In a typical OO language, we would
+have an abstract base class <code>Shape</code> which specifies a set of methods, and concrete classes
+<code>Rect</code>, <code>Circle</code>, <code>Triangle</code>, etc. which would implement specific behaviour.</p>
 <p>This simple class hierarchy is shown in the following UML diagram:</p>
 <figure>
-<img src="../img/classes.png" alt /><figcaption>Shape class hierarchy</figcaption>
+<img src="../img/classes.png" alt="Shape class hierarchy" />
+<figcaption aria-hidden="true">Shape class hierarchy</figcaption>
 </figure>
-<p>In Haskell there is no inheritance between types. But with type classes we can specify an <em>interface</em> which must be implemented by concrete types that wish to instantiate the type class. So we start with a <code>Shape</code> type class:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="co">-- | The Shape type class. It defines four functions that all concrete Shape types must implement.</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a><span class="kw">class</span> <span class="dt">Shape</span> a <span class="kw">where</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>  <span class="co">-- | render a Shape</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a><span class="ot">  draw   ::</span> a <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>  <span class="co">-- | move a Shape by an x and y amount</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a><span class="ot">  move   ::</span> (<span class="dt">Double</span>,<span class="dt">Double</span>) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true"></a>  <span class="co">-- | compute the area of a Shape</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true"></a><span class="ot">  area   ::</span> a <span class="ot">-&gt;</span> <span class="dt">Double</span></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true"></a>  <span class="co">-- | compute the circumference of a Shape</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true"></a><span class="ot">  circum ::</span> a <span class="ot">-&gt;</span> <span class="dt">Double</span></span></code></pre></div>
-<p>Any concrete type <code>a</code> instantiating <code>Shape</code> must implement the four functions <code>draw</code>, <code>move</code>, <code>area</code> and <code>circum</code>.</p>
+<p>In Haskell there is no inheritance between types. But with type classes we can specify an
+<em>interface</em> which must be implemented by concrete types that wish to instantiate the type class. So we start with a
+<code>Shape</code> type class:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | The Shape type class. It defines four functions that all concrete Shape types must implement.</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">Shape</span> a <span class="kw">where</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- | render a Shape</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ot">  draw   ::</span> a <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- | move a Shape by an x and y amount</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ot">  move   ::</span> (<span class="dt">Double</span>,<span class="dt">Double</span>) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- | compute the area of a Shape</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ot">  area   ::</span> a <span class="ot">-&gt;</span> <span class="dt">Double</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- | compute the circumference of a Shape</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="ot">  circum ::</span> a <span class="ot">-&gt;</span> <span class="dt">Double</span></span></code></pre></div>
+<p>Any concrete type <code>a</code> instantiating <code>Shape</code> must implement the four functions <code>draw</code>, <code>move</code>,
+<code>area</code> and <code>circum</code>.</p>
 <p>We start with a <code>Circle</code> type:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="co">-- | a circle defined by the centre point and a radius</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Circle</span> <span class="ot">=</span> <span class="dt">Circle</span> <span class="dt">Point</span> <span class="dt">Double</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a><span class="co">-- | a point in the two-dimensional plane</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Point</span> <span class="ot">=</span> <span class="dt">Point</span> <span class="dt">Double</span> <span class="dt">Double</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a><span class="co">-- | making Circle an instance of Shape</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Circle</span> <span class="kw">where</span></span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>  draw       (<span class="dt">Circle</span> centre radius) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Circle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> centre <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> radius <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a>  move (x,y) (<span class="dt">Circle</span> centre radius) <span class="ot">=</span> <span class="dt">Circle</span> (movePoint x y centre) radius</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a>  area   (<span class="dt">Circle</span> _ r) <span class="ot">=</span> r <span class="op">^</span> <span class="dv">2</span> <span class="op">*</span> <span class="fu">pi</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>  circum (<span class="dt">Circle</span> _ r) <span class="ot">=</span> <span class="dv">2</span> <span class="op">*</span> r <span class="op">*</span> <span class="fu">pi</span></span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true"></a><span class="co">-- | move a Point by an x and y amount</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true"></a><span class="ot">movePoint ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Point</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true"></a>movePoint x y (<span class="dt">Point</span> x_a y_a) <span class="ot">=</span> <span class="dt">Point</span> (x_a <span class="op">+</span> x) (y_a <span class="op">+</span> y)</span></code></pre></div>
-<p>As you can see, I’m not going to implement any real graphical rendering in <code>draw</code> but simply printing out the coordinates of the centre point and the radius. But at least <code>area</code> and <code>circum</code> implement the well-known geometrical properties of a circle.</p>
-<p>Following this approach it’s straightforward to implement data types <code>Rect</code> and <code>Triangle</code>. Let’s start with <code>Rect</code>:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- | a rectangle defined by to points (bottom left and top right corners) </span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Rect</span> <span class="ot">=</span> <span class="dt">Rect</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a><span class="co">-- | making Rect an instance of Shape</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Rect</span> <span class="kw">where</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>  draw       (<span class="dt">Rect</span> a b) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Rectangle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> a <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> b <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a>  move (x,y) (<span class="dt">Rect</span> a b) <span class="ot">=</span> <span class="dt">Rect</span> a' b'</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a>      a' <span class="ot">=</span> movePoint x y a</span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>      b' <span class="ot">=</span> movePoint x y b</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a>  area rect   <span class="ot">=</span> width <span class="op">*</span> height</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a>      (width, height) <span class="ot">=</span> widthAndHeight rect</span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>  circum rect <span class="ot">=</span> <span class="dv">2</span> <span class="op">*</span> (width <span class="op">+</span> height)</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true"></a>      (width, height) <span class="ot">=</span> widthAndHeight rect</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true"></a></span>
-<span id="cb3-18"><a href="#cb3-18" aria-hidden="true"></a><span class="co">-- | computes the width and height of a rectangle, returns them as a tuple</span></span>
-<span id="cb3-19"><a href="#cb3-19" aria-hidden="true"></a><span class="ot">widthAndHeight ::</span> <span class="dt">Rect</span> <span class="ot">-&gt;</span> (<span class="dt">Double</span>, <span class="dt">Double</span>)</span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true"></a>widthAndHeight (<span class="dt">Rect</span> (<span class="dt">Point</span> x_a y_a) (<span class="dt">Point</span> x_b y_b)) <span class="ot">=</span> (<span class="fu">abs</span> (x_b <span class="op">-</span> x_a), <span class="fu">abs</span> (y_b <span class="op">-</span> y_a))</span></code></pre></div>
-<p>There is nothing special here, we are just implementing the functions specified by the <code>Shape</code> type class in a most simple way.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | a circle defined by the centre point and a radius</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Circle</span> <span class="ot">=</span> <span class="dt">Circle</span> <span class="dt">Point</span> <span class="dt">Double</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | a point in the two-dimensional plane</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Point</span> <span class="ot">=</span> <span class="dt">Point</span> <span class="dt">Double</span> <span class="dt">Double</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">-- | making Circle an instance of Shape</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Circle</span> <span class="kw">where</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  draw       (<span class="dt">Circle</span> centre radius) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Circle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> centre <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> radius <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  move (x,y) (<span class="dt">Circle</span> centre radius) <span class="ot">=</span> <span class="dt">Circle</span> (movePoint x y centre) radius</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  area   (<span class="dt">Circle</span> _ r) <span class="ot">=</span> r <span class="op">^</span> <span class="dv">2</span> <span class="op">*</span> <span class="fu">pi</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  circum (<span class="dt">Circle</span> _ r) <span class="ot">=</span> <span class="dv">2</span> <span class="op">*</span> r <span class="op">*</span> <span class="fu">pi</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">-- | move a Point by an x and y amount</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="ot">movePoint ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Point</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>movePoint x y (<span class="dt">Point</span> x_a y_a) <span class="ot">=</span> <span class="dt">Point</span> (x_a <span class="op">+</span> x) (y_a <span class="op">+</span> y)</span></code></pre></div>
+<p>As you can see, I’m not going to implement any real graphical rendering in <code>draw</code> but simply
+printing out the coordinates of the centre point and the radius.
+But at least <code>area</code> and <code>circum</code> implement the well-known geometrical properties of a circle.</p>
+<p>Following this approach it’s straightforward to implement data types <code>Rect</code> and <code>Triangle</code>. Let’s start with
+<code>Rect</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | a rectangle defined by to points (bottom left and top right corners) </span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Rect</span> <span class="ot">=</span> <span class="dt">Rect</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | making Rect an instance of Shape</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Rect</span> <span class="kw">where</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  draw       (<span class="dt">Rect</span> a b) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Rectangle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> a <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> b <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  move (x,y) (<span class="dt">Rect</span> a b) <span class="ot">=</span> <span class="dt">Rect</span> a' b'</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>      a' <span class="ot">=</span> movePoint x y a</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>      b' <span class="ot">=</span> movePoint x y b</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  area rect   <span class="ot">=</span> width <span class="op">*</span> height</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>      (width, height) <span class="ot">=</span> widthAndHeight rect</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  circum rect <span class="ot">=</span> <span class="dv">2</span> <span class="op">*</span> (width <span class="op">+</span> height)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>      (width, height) <span class="ot">=</span> widthAndHeight rect</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="co">-- | computes the width and height of a rectangle, returns them as a tuple</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="ot">widthAndHeight ::</span> <span class="dt">Rect</span> <span class="ot">-&gt;</span> (<span class="dt">Double</span>, <span class="dt">Double</span>)</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>widthAndHeight (<span class="dt">Rect</span> (<span class="dt">Point</span> x_a y_a) (<span class="dt">Point</span> x_b y_b)) <span class="ot">=</span> (<span class="fu">abs</span> (x_b <span class="op">-</span> x_a), <span class="fu">abs</span> (y_b <span class="op">-</span> y_a))</span></code></pre></div>
+<p>There is nothing special here, we are just implementing the functions specified by the <code>Shape</code> type class
+in a most simple way.</p>
 <p>On to <code>Triangle</code>:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="co">-- | a triangle defined by three points</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Triangle</span> <span class="ot">=</span> <span class="dt">Triangle</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a><span class="co">-- | making Triangle an instance of Shape</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Triangle</span> <span class="kw">where</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a>  draw       (<span class="dt">Triangle</span> a b c) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Triangle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> a <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> b <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> c <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>  move (x,y) (<span class="dt">Triangle</span> a b c) <span class="ot">=</span> <span class="dt">Triangle</span> a' b' c'</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a>      a' <span class="ot">=</span> movePoint x y a</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true"></a>      b' <span class="ot">=</span> movePoint x y b</span>
-<span id="cb4-11"><a href="#cb4-11" aria-hidden="true"></a>      c' <span class="ot">=</span> movePoint x y c</span>
-<span id="cb4-12"><a href="#cb4-12" aria-hidden="true"></a>  area   triangle <span class="ot">=</span> <span class="fu">sqrt</span> (s <span class="op">*</span> (s <span class="op">-</span> a) <span class="op">*</span> (s <span class="op">-</span> b) <span class="op">*</span> (s <span class="op">-</span> c)) <span class="co">-- using Heron's formula</span></span>
-<span id="cb4-13"><a href="#cb4-13" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb4-14"><a href="#cb4-14" aria-hidden="true"></a>      s <span class="ot">=</span> <span class="fl">0.5</span> <span class="op">*</span> (a <span class="op">+</span> b <span class="op">+</span> c)</span>
-<span id="cb4-15"><a href="#cb4-15" aria-hidden="true"></a>      (a, b, c) <span class="ot">=</span> sides triangle</span>
-<span id="cb4-16"><a href="#cb4-16" aria-hidden="true"></a>  circum triangle <span class="ot">=</span> a <span class="op">+</span> b <span class="op">+</span> c</span>
-<span id="cb4-17"><a href="#cb4-17" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb4-18"><a href="#cb4-18" aria-hidden="true"></a>      (a, b, c) <span class="ot">=</span> sides triangle</span>
-<span id="cb4-19"><a href="#cb4-19" aria-hidden="true"></a></span>
-<span id="cb4-20"><a href="#cb4-20" aria-hidden="true"></a><span class="co">-- | computing the length of all sides of a triangle, returns them as a triple</span></span>
-<span id="cb4-21"><a href="#cb4-21" aria-hidden="true"></a><span class="ot">sides ::</span> <span class="dt">Triangle</span> <span class="ot">-&gt;</span> (<span class="dt">Double</span>, <span class="dt">Double</span>, <span class="dt">Double</span>)</span>
-<span id="cb4-22"><a href="#cb4-22" aria-hidden="true"></a>sides (<span class="dt">Triangle</span> x y z) <span class="ot">=</span> (distance x y, distance y z, distance x z)</span>
-<span id="cb4-23"><a href="#cb4-23" aria-hidden="true"></a></span>
-<span id="cb4-24"><a href="#cb4-24" aria-hidden="true"></a><span class="co">-- | compute the distance between two points</span></span>
-<span id="cb4-25"><a href="#cb4-25" aria-hidden="true"></a><span class="ot">distance ::</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Double</span></span>
-<span id="cb4-26"><a href="#cb4-26" aria-hidden="true"></a>distance (<span class="dt">Point</span> x_a y_a) (<span class="dt">Point</span> x_b y_b) <span class="ot">=</span> <span class="fu">sqrt</span> ((x_b <span class="op">-</span> x_a) <span class="op">^</span> <span class="dv">2</span> <span class="op">+</span> (y_b <span class="op">-</span> y_a) <span class="op">^</span> <span class="dv">2</span>)</span>
-<span id="cb4-27"><a href="#cb4-27" aria-hidden="true"></a></span>
-<span id="cb4-28"><a href="#cb4-28" aria-hidden="true"></a><span class="co">-- | provide a more dense representation of a point</span></span>
-<span id="cb4-29"><a href="#cb4-29" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Point</span> <span class="kw">where</span></span>
-<span id="cb4-30"><a href="#cb4-30" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">Point</span> x y) <span class="ot">=</span> <span class="st">&quot;(&quot;</span> <span class="op">++</span> <span class="fu">show</span> x <span class="op">++</span> <span class="st">&quot;,&quot;</span> <span class="op">++</span> <span class="fu">show</span> y <span class="op">++</span> <span class="st">&quot;)&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | a triangle defined by three points</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Triangle</span> <span class="ot">=</span> <span class="dt">Triangle</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="dt">Point</span> <span class="kw">deriving</span> (<span class="dt">Show</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | making Triangle an instance of Shape</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">Triangle</span> <span class="kw">where</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  draw       (<span class="dt">Triangle</span> a b c) <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Triangle [&quot;</span> <span class="op">++</span> <span class="fu">show</span> a <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> b <span class="op">++</span> <span class="st">&quot;, &quot;</span> <span class="op">++</span> <span class="fu">show</span> c <span class="op">++</span> <span class="st">&quot;]&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  move (x,y) (<span class="dt">Triangle</span> a b c) <span class="ot">=</span> <span class="dt">Triangle</span> a' b' c'</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>      a' <span class="ot">=</span> movePoint x y a</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>      b' <span class="ot">=</span> movePoint x y b</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>      c' <span class="ot">=</span> movePoint x y c</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>  area   triangle <span class="ot">=</span> <span class="fu">sqrt</span> (s <span class="op">*</span> (s <span class="op">-</span> a) <span class="op">*</span> (s <span class="op">-</span> b) <span class="op">*</span> (s <span class="op">-</span> c)) <span class="co">-- using Heron's formula</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>      s <span class="ot">=</span> <span class="fl">0.5</span> <span class="op">*</span> (a <span class="op">+</span> b <span class="op">+</span> c)</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>      (a, b, c) <span class="ot">=</span> sides triangle</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>  circum triangle <span class="ot">=</span> a <span class="op">+</span> b <span class="op">+</span> c</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>      (a, b, c) <span class="ot">=</span> sides triangle</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="co">-- | computing the length of all sides of a triangle, returns them as a triple</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="ot">sides ::</span> <span class="dt">Triangle</span> <span class="ot">-&gt;</span> (<span class="dt">Double</span>, <span class="dt">Double</span>, <span class="dt">Double</span>)</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>sides (<span class="dt">Triangle</span> x y z) <span class="ot">=</span> (distance x y, distance y z, distance x z)</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a><span class="co">-- | compute the distance between two points</span></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a><span class="ot">distance ::</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Point</span> <span class="ot">-&gt;</span> <span class="dt">Double</span></span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>distance (<span class="dt">Point</span> x_a y_a) (<span class="dt">Point</span> x_b y_b) <span class="ot">=</span> <span class="fu">sqrt</span> ((x_b <span class="op">-</span> x_a) <span class="op">^</span> <span class="dv">2</span> <span class="op">+</span> (y_b <span class="op">-</span> y_a) <span class="op">^</span> <span class="dv">2</span>)</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="co">-- | provide a more dense representation of a point</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Point</span> <span class="kw">where</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">show</span> (<span class="dt">Point</span> x y) <span class="ot">=</span> <span class="st">&quot;(&quot;</span> <span class="op">++</span> <span class="fu">show</span> x <span class="op">++</span> <span class="st">&quot;,&quot;</span> <span class="op">++</span> <span class="fu">show</span> y <span class="op">++</span> <span class="st">&quot;)&quot;</span></span></code></pre></div>
 <p>Let’s create three sample instances:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="ot">rect ::</span> <span class="dt">Rect</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a>rect <span class="ot">=</span> <span class="dt">Rect</span> (<span class="dt">Point</span> <span class="dv">0</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">5</span> <span class="dv">4</span>)</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a><span class="ot">circle ::</span> <span class="dt">Circle</span></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a>circle <span class="ot">=</span> <span class="dt">Circle</span> (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">5</span>) <span class="dv">4</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a></span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a><span class="ot">triangle ::</span> <span class="dt">Triangle</span></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true"></a>triangle <span class="ot">=</span> <span class="dt">Triangle</span> (<span class="dt">Point</span> <span class="dv">0</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">3</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">rect ::</span> <span class="dt">Rect</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>rect <span class="ot">=</span> <span class="dt">Rect</span> (<span class="dt">Point</span> <span class="dv">0</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">5</span> <span class="dv">4</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ot">circle ::</span> <span class="dt">Circle</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>circle <span class="ot">=</span> <span class="dt">Circle</span> (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">5</span>) <span class="dv">4</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="ot">triangle ::</span> <span class="dt">Triangle</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>triangle <span class="ot">=</span> <span class="dt">Triangle</span> (<span class="dt">Point</span> <span class="dv">0</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">0</span>) (<span class="dt">Point</span> <span class="dv">4</span> <span class="dv">3</span>)</span></code></pre></div>
 <p>Now we have all ingredients at hand for a little demo.</p>
-<p>The type class <code>Shape</code> specifies a function <code>draw :: Shape a =&gt; a -&gt; IO ()</code>. This function is polymorphic in its argument: it will take an argument of any type <code>a</code> instantiating <code>Shape</code> and will perform an <code>IO ()</code> action, rendering the shape to the console in our case.</p>
+<p>The type class <code>Shape</code> specifies a function <code>draw :: Shape a =&gt; a -&gt; IO ()</code>.
+This function is polymorphic in its argument: it will take an argument of any type <code>a</code>
+instantiating <code>Shape</code> and will perform an <code>IO ()</code> action, rendering the shape to the console in our case.</p>
 <p>Let’s try it in GHCi:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="op">&gt;</span> draw circle</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a><span class="op">&gt;</span> draw rect</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a><span class="op">&gt;</span> draw triangle</span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a><span class="dt">Triangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">3.0</span>)]</span></code></pre></div>
-<p>This code makes use of Haskell’s Ad-hoc polymorphism and elegantly fulfils the requirements given for Dynamic Polymorphism in Uncle Bob’s blog post: <em>“call functions without the source code of the caller depending upon the source code of the callee”</em>. On the call site, we just rely on the function <code>draw :: (Shape a) =&gt; a -&gt; IO ()</code>. This type signature assures us that it will work on any concrete type <code>a</code> that instantiates the <code>Shape</code> type class.</p>
-<p>By making use of the reversed application operator <code>(&amp;)</code> we can create a more OOP look-and-feel to our code. Depending on the context it may be more convenient to write and read code using <code>(&amp;)</code> even when you are not after an OOP look-and-feel.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="op">&gt;</span> <span class="kw">import</span> <span class="dt">Data.Function</span> ((&amp;))</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a><span class="op">&gt;</span> circle <span class="op">&amp;</span> draw</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> draw circle</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> draw rect</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> draw triangle</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="dt">Triangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">3.0</span>)]</span></code></pre></div>
+<p>This code makes use of Haskell’s Ad-hoc polymorphism and elegantly fulfils the requirements given for
+Dynamic Polymorphism in Uncle Bob’s blog post:
+<em>“call functions without the source code of the caller depending upon the source code of the callee”</em>. On the call site,
+we just rely on the function <code>draw :: (Shape a) =&gt; a -&gt; IO ()</code>. This type signature assures us that it will work
+on any concrete type <code>a</code> that instantiates the <code>Shape</code> type class.</p>
+<p>By making use of the reversed application operator <code>(&amp;)</code> we can create a more OOP look-and-feel to our code.
+Depending on the context it may be more convenient to write and read code using <code>(&amp;)</code> even when
+you are not after an OOP look-and-feel.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> <span class="kw">import</span> <span class="dt">Data.Function</span> ((&amp;))</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> circle <span class="op">&amp;</span> draw</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span></code></pre></div>
 <p>We can use the <code>(&amp;)</code> operator to even work in a <strong>fluent api</strong> style:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>  rect</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>    <span class="op">&amp;</span> move (<span class="dv">4</span>,<span class="dv">2</span>)</span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>    <span class="op">&amp;</span> draw</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a>  </span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a>  rect</span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a>    <span class="op">&amp;</span> draw</span>
-<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a></span>
-<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a>  circle</span>
-<span id="cb8-11"><a href="#cb8-11" aria-hidden="true"></a>    <span class="op">&amp;</span> move (<span class="dv">4</span>,<span class="dv">2</span>)</span>
-<span id="cb8-12"><a href="#cb8-12" aria-hidden="true"></a>    <span class="op">&amp;</span> draw</span>
-<span id="cb8-13"><a href="#cb8-13" aria-hidden="true"></a></span>
-<span id="cb8-14"><a href="#cb8-14" aria-hidden="true"></a>  circle</span>
-<span id="cb8-15"><a href="#cb8-15" aria-hidden="true"></a>    <span class="op">&amp;</span> draw</span>
-<span id="cb8-16"><a href="#cb8-16" aria-hidden="true"></a></span>
-<span id="cb8-17"><a href="#cb8-17" aria-hidden="true"></a><span class="co">-- and then in GHCi:</span></span>
-<span id="cb8-18"><a href="#cb8-18" aria-hidden="true"></a><span class="op">&gt;</span> main</span>
-<span id="cb8-19"><a href="#cb8-19" aria-hidden="true"></a><span class="dt">Rectangle</span> [(<span class="fl">4.0</span>,<span class="fl">2.0</span>), (<span class="fl">9.0</span>,<span class="fl">6.0</span>)]</span>
-<span id="cb8-20"><a href="#cb8-20" aria-hidden="true"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
-<span id="cb8-21"><a href="#cb8-21" aria-hidden="true"></a><span class="dt">Circle</span> [(<span class="fl">8.0</span>,<span class="fl">7.0</span>), <span class="fl">4.0</span>]</span>
-<span id="cb8-22"><a href="#cb8-22" aria-hidden="true"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span></code></pre></div>
-<p>In Haskell all values are immutable: printing the original shapes a second time demonstrates that operations like <code>move</code> are not destructive.</p>
-<p>With this little setup we have shown that Haskell allows us to have both: Referential Transparency plus ad-hoc polymorphism. That is, we can use the essential elements of OOP and FP in one language. And: we are doing it all the time, as it’s quite <a href="https://www.haskell.org/tutorial/classes.html">common to use class types in this way.</a></p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  rect</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> move (<span class="dv">4</span>,<span class="dv">2</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> draw</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>  rect</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> draw</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>  circle</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> move (<span class="dv">4</span>,<span class="dv">2</span>)</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> draw</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>  circle</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> draw</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="co">-- and then in GHCi:</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> main</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a><span class="dt">Rectangle</span> [(<span class="fl">4.0</span>,<span class="fl">2.0</span>), (<span class="fl">9.0</span>,<span class="fl">6.0</span>)]</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a><span class="dt">Circle</span> [(<span class="fl">8.0</span>,<span class="fl">7.0</span>), <span class="fl">4.0</span>]</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span></code></pre></div>
+<p>In Haskell all values are immutable: printing the original shapes a second time
+demonstrates that operations like <code>move</code> are not destructive.</p>
+<p>With this little setup we have shown that Haskell allows us to have both: Referential Transparency plus ad-hoc
+polymorphism. That is, we can use the essential elements of OOP and FP in one language.
+And: we are doing it all the time, as it’s quite <a href="https://www.haskell.org/tutorial/classes.html">common to use class types in this way.</a></p>
 <h2 id="heterogeneous-collections">Heterogeneous collections</h2>
 <p>In Haskell, container types like lists are polymorphic, but it is <strong>not</strong> possible to define a list like this:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="ot">shapes ::</span> [<span class="dt">Shape</span>]</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a>shapes <span class="ot">=</span> [circle,rect,triangle]</span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ot">shapes ::</span> [<span class="dt">Shape</span>]</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>shapes <span class="ot">=</span> [circle,rect,triangle]</span></code></pre></div>
 <p>because <strong>type classes are</strong> not types, but <strong>constraints on types</strong>.</p>
-<p>So in haskell a list like <code>[circle,rect,triangle]</code> is considered to be heterogeneous, as the concrete types of all the elements differ.</p>
-<p>There are <a href="https://wiki.haskell.org/Heterogenous_collections">several ways to have heterogeneous collections in Haskell</a>. I will demonstrate just one of them, which is based on <em>existential types</em>. (I have chosen this approach as it keeps the code easier to read and allows to add more <code>Shape</code> types whenever needed.</p>
-<p>There is also a recent blog post on <a href="https://blog.sumtypeofway.com/posts/existential-haskell.html">Existential Haskell</a> which demonstrates some interesting use cases for existential types.</p>
-<p>However, the <a href="https://github.com/thma/FPvsOO/blob/master/src/Lib.hs">sourcecode for this example</a> also demonstrates a solution based on a simple sum type.)</p>
-<p>Once we activate the <code>ExistentialQuantification</code> language extension, we can define a data type <code>ShapeType</code> with a single constructor <code>MkShape</code> that will take any instance of a concrete type instantiating the <code>Shape</code> type class:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="ot">{-# LANGUAGE ExistentialQuantification #-}</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">ShapeType</span> <span class="ot">=</span> <span class="kw">forall</span> a <span class="op">.</span> (<span class="dt">Show</span> a, <span class="dt">Shape</span> a) <span class="ot">=&gt;</span> <span class="dt">MkShape</span> a</span></code></pre></div>
-<p>Now we can make <code>ShapeType</code> an instance of <code>Shape</code> which will delegate all function calls to the wrapped types:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">ShapeType</span> <span class="kw">where</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>  area     (<span class="dt">MkShape</span> s) <span class="ot">=</span> area s</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>  circum   (<span class="dt">MkShape</span> s) <span class="ot">=</span> circum s</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>  draw     (<span class="dt">MkShape</span> s) <span class="ot">=</span> draw s</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>  move vec (<span class="dt">MkShape</span> s) <span class="ot">=</span> <span class="dt">MkShape</span> (move vec s)</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true"></a><span class="co">-- we also have to manually derive a Show instance as auto deriving is not possible on the existential type</span></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true"></a><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">ShapeType</span> <span class="kw">where</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true"></a>  <span class="fu">show</span> (<span class="dt">MkShape</span> s) <span class="ot">=</span> <span class="fu">show</span> s</span></code></pre></div>
+<p>So in haskell a list like <code>[circle,rect,triangle]</code> is considered to be heterogeneous, as the concrete
+types of all the elements differ.</p>
+<p>There are <a href="https://wiki.haskell.org/Heterogenous_collections">several ways to have heterogeneous collections in Haskell</a>.
+I will demonstrate just one of them, which is based on <em>existential types</em>.
+(I have chosen this approach as it keeps the code easier to read and allows to add more <code>Shape</code> types whenever needed.</p>
+<p>There is also a recent blog post on <a href="https://blog.sumtypeofway.com/posts/existential-haskell.html">Existential Haskell</a>
+which demonstrates some interesting use cases for existential types.</p>
+<p>However, the <a href="https://github.com/thma/FPvsOO/blob/master/src/Lib.hs">sourcecode for this example</a> also demonstrates
+a solution based on a simple sum type.)</p>
+<p>Once we activate the <code>ExistentialQuantification</code> language extension, we can define a data type
+<code>ShapeType</code> with a single constructor <code>MkShape</code> that will take any instance of a concrete type
+instantiating the <code>Shape</code> type class:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE ExistentialQuantification #-}</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ShapeType</span> <span class="ot">=</span> <span class="kw">forall</span> a <span class="op">.</span> (<span class="dt">Show</span> a, <span class="dt">Shape</span> a) <span class="ot">=&gt;</span> <span class="dt">MkShape</span> a</span></code></pre></div>
+<p>Now we can make <code>ShapeType</code> an instance of <code>Shape</code> which will delegate all function calls to
+the wrapped types:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Shape</span> <span class="dt">ShapeType</span> <span class="kw">where</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  area     (<span class="dt">MkShape</span> s) <span class="ot">=</span> area s</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  circum   (<span class="dt">MkShape</span> s) <span class="ot">=</span> circum s</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  draw     (<span class="dt">MkShape</span> s) <span class="ot">=</span> draw s</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>  move vec (<span class="dt">MkShape</span> s) <span class="ot">=</span> <span class="dt">MkShape</span> (move vec s)</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co">-- we also have to manually derive a Show instance as auto deriving is not possible on the existential type</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">ShapeType</span> <span class="kw">where</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">show</span> (<span class="dt">MkShape</span> s) <span class="ot">=</span> <span class="fu">show</span> s</span></code></pre></div>
 <p>With this setup we can define a list of shapes as follows:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true"></a><span class="ot">shapes ::</span> [<span class="dt">ShapeType</span>]</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true"></a>shapes <span class="ot">=</span> [<span class="dt">MkShape</span> rect, <span class="dt">MkShape</span> circle, <span class="dt">MkShape</span> triangle]</span></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ot">shapes ::</span> [<span class="dt">ShapeType</span>]</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>shapes <span class="ot">=</span> [<span class="dt">MkShape</span> rect, <span class="dt">MkShape</span> circle, <span class="dt">MkShape</span> triangle]</span></code></pre></div>
 <p>Finally, we are able to use this list just as any other:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> area shapes</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> circum shapes</span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> (move (<span class="dv">4</span>,<span class="dv">10</span>)) shapes</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;&quot;</span></span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true"></a>  <span class="fu">mapM_</span> draw shapes</span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true"></a></span>
-<span id="cb13-9"><a href="#cb13-9" aria-hidden="true"></a><span class="co">-- and then in GHCi:</span></span>
-<span id="cb13-10"><a href="#cb13-10" aria-hidden="true"></a><span class="op">&gt;</span> main</span>
-<span id="cb13-11"><a href="#cb13-11" aria-hidden="true"></a>[<span class="fl">20.0</span>,<span class="fl">50.26548245743669</span>,<span class="fl">6.0</span>]</span>
-<span id="cb13-12"><a href="#cb13-12" aria-hidden="true"></a>[<span class="fl">18.0</span>,<span class="fl">25.132741228718345</span>,<span class="fl">12.0</span>]</span>
-<span id="cb13-13"><a href="#cb13-13" aria-hidden="true"></a>[<span class="dt">Rect</span> (<span class="fl">4.0</span>,<span class="fl">10.0</span>) (<span class="fl">9.0</span>,<span class="fl">14.0</span>),<span class="dt">Circle</span> (<span class="fl">8.0</span>,<span class="fl">15.0</span>) <span class="fl">4.0</span>,<span class="dt">Triangle</span> (<span class="fl">4.0</span>,<span class="fl">10.0</span>) (<span class="fl">8.0</span>,<span class="fl">10.0</span>) (<span class="fl">8.0</span>,<span class="fl">13.0</span>)]</span>
-<span id="cb13-14"><a href="#cb13-14" aria-hidden="true"></a></span>
-<span id="cb13-15"><a href="#cb13-15" aria-hidden="true"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
-<span id="cb13-16"><a href="#cb13-16" aria-hidden="true"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span>
-<span id="cb13-17"><a href="#cb13-17" aria-hidden="true"></a><span class="dt">Triangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">3.0</span>)]</span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> area shapes</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> circum shapes</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> (move (<span class="dv">4</span>,<span class="dv">10</span>)) shapes</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> draw shapes</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a><span class="co">-- and then in GHCi:</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> main</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>[<span class="fl">20.0</span>,<span class="fl">50.26548245743669</span>,<span class="fl">6.0</span>]</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>[<span class="fl">18.0</span>,<span class="fl">25.132741228718345</span>,<span class="fl">12.0</span>]</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>[<span class="dt">Rect</span> (<span class="fl">4.0</span>,<span class="fl">10.0</span>) (<span class="fl">9.0</span>,<span class="fl">14.0</span>),<span class="dt">Circle</span> (<span class="fl">8.0</span>,<span class="fl">15.0</span>) <span class="fl">4.0</span>,<span class="dt">Triangle</span> (<span class="fl">4.0</span>,<span class="fl">10.0</span>) (<span class="fl">8.0</span>,<span class="fl">10.0</span>) (<span class="fl">8.0</span>,<span class="fl">13.0</span>)]</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a><span class="dt">Rectangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">5.0</span>,<span class="fl">4.0</span>)]</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a><span class="dt">Circle</span> [(<span class="fl">4.0</span>,<span class="fl">5.0</span>), <span class="fl">4.0</span>]</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a><span class="dt">Triangle</span> [(<span class="fl">0.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">0.0</span>), (<span class="fl">4.0</span>,<span class="fl">3.0</span>)]</span></code></pre></div>
 <h2 id="conclusion">Conclusion</h2>
-<p>In our short Demo we have seen that Haskell supports both Referential Transparency and Polymorphism. We have also seen that the reversed application operator <code>(&amp;)</code> allows us to structure code in a way that even has some kind of OOP look-and-feel while remaining purely functional.</p>
-<p>If we follow Uncle Bob’s argumentation to view Polymorphism to be the central concept of OOP (and in consequence regard other important OO features like Inheritance or Encapsulation as not so distinctive), we can conclude that Haskell is already well prepared to implement programs in the hybrid way proposed by him.</p>
-<p>In fact, the benefits associated with this approach (flexibility, maintainability, testability, simplicity, and robustness) are typical key features of systems implemented in Haskell.</p>
+<p>In our short Demo we have seen that Haskell supports both Referential Transparency and Polymorphism.
+We have also seen that the reversed application operator <code>(&amp;)</code> allows us to structure code in a way that even has some
+kind of OOP look-and-feel while remaining purely functional.</p>
+<p>If we follow Uncle Bob’s argumentation to view Polymorphism to be the central concept of OOP
+(and in consequence regard other important OO features like Inheritance or Encapsulation as not so distinctive),
+we can conclude that Haskell is already well prepared to implement programs in the hybrid way proposed by him.</p>
+<p>In fact, the benefits associated with this approach (flexibility, maintainability, testability, simplicity, and robustness)
+are typical key features of systems implemented in Haskell.</p>
 <hr />
 <h2 id="acknowledgements">Acknowledgements</h2>
 <p>Thanks to <a href="https://github.com/treeowl">David Feuer</a> for helping me with a stupid error in the existential type code!</p>

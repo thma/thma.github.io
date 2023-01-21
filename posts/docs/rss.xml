@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>LambdaBlog: lambda is not a four letter word</title>
+        <link>https://thma.github.io/</link>
+        <description><![CDATA[This feed lists the latest blog posts]]></description>
+        <atom:link href="https://thma.github.io//rss.xml" rel="self"
+                   type="application/rss+xml" />
+        <lastBuildDate>Unknown</lastBuildDate>
+        
+    </channel>
+</rss>

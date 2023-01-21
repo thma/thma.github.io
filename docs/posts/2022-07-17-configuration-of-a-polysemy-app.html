@@ -60,180 +60,189 @@
     </em><br /><br />
 </div>
 
-<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
+<p><a href="https://github.com/thma/PolysemyCleanArchitecture/actions"><img src="https://github.com/thma/PolysemyCleanArchitecture/workflows/Haskell%20CI/badge.svg" alt="Actions Status" /></a>
+<a href="https://github.com/thma/PolysemyCleanArchitecture"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
 <h2 id="introduction">Introduction</h2>
 <p>This is yet another sequel to my <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">Clean Architecture with Haskell and Polysemy article</a>.</p>
-<p>In my last blog post I demonstrated how the actual hosting of a WAI web app (e.g. with the Warp server or on AWS Lambda) can be defined as a Polysemy effect. The idea was well received on <a href="https://www.reddit.com/r/haskell/">reddit/r/haskell</a> and also stirred some further discussions. One question that came up: why did I explicitly load configuration before starting the Polysemy effect interpreter? Wouldn’t it be much more in line with the overall idea of my <em>Polysemy Clean Architecture</em> to handle this loading also as an effect?</p>
+<p>In my last blog post I demonstrated how the actual hosting of a WAI web app (e.g. with the Warp server or on AWS Lambda) can be defined as a Polysemy effect.
+The idea was well received on <a href="https://www.reddit.com/r/haskell/">reddit/r/haskell</a> and also stirred some further discussions.
+One question that came up: why did I explicitly load configuration before starting the Polysemy effect interpreter?
+Wouldn’t it be much more in line with the overall idea of my <em>Polysemy Clean Architecture</em> to handle this loading also as an effect?</p>
 <p>Here is my original code:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config BEFORE starting the Polysemy effect interpreter</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config BEFORE starting the Polysemy effect interpreter</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
 <p>I explained my reasons for this design but promised to look for a better solution.</p>
 <p>In the following I’ll explain the new design that I came up with.</p>
 <h2 id="the-ideas-behind-my-original-design">The ideas behind my original design</h2>
 <p>The central reason for explicitely loading the configuration before starting the polysemy interpreter was that the configuration <code>config</code> is needed to select effect interpreter functions in the assembly of the WAI web app. To better understand this we’ll drill down the execution sequence starting from <code>runWarpAppServer</code> effect handler:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>runWarpAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>  <span class="co">-- serving an application by constructing it from a config</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>    embed <span class="op">$</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a>      <span class="kw">let</span> app <span class="ot">=</span> createApp config</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>       <span class="kw">in</span> <span class="kw">do</span> </span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>        <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;starting Warp on Port &quot;</span> <span class="op">++</span> <span class="fu">show</span> (port config)</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>        Warp.run (port config) app</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Application</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>createApp config <span class="ot">=</span> serve reservationAPI (liftServer config)</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true"></a><span class="ot">liftServer ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> <span class="dt">Handler</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true"></a>liftServer config <span class="ot">=</span> hoistServer reservationAPI (interpretServer config) reservationServer</span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true"></a>  <span class="kw">where</span></span>
-<span id="cb2-17"><a href="#cb2-17" aria-hidden="true"></a><span class="ot">    interpretServer ::</span> (<span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
-<span id="cb2-18"><a href="#cb2-18" aria-hidden="true"></a>                    <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> '[<span class="dt">KVS</span> k v, <span class="dt">Input</span> <span class="dt">Config</span>, <span class="dt">Trace</span>, <span class="dt">Error</span> <span class="dt">ReservationError</span>, <span class="dt">Embed</span> <span class="dt">IO</span>] a <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
-<span id="cb2-19"><a href="#cb2-19" aria-hidden="true"></a>    interpretServer config sem  <span class="ot">=</span>  sem</span>
-<span id="cb2-20"><a href="#cb2-20" aria-hidden="true"></a>      <span class="op">&amp;</span> runSelectedKvsBackend config</span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true"></a>      <span class="op">&amp;</span> runInputConst config</span>
-<span id="cb2-22"><a href="#cb2-22" aria-hidden="true"></a>      <span class="op">&amp;</span> runSelectedTrace config</span>
-<span id="cb2-23"><a href="#cb2-23" aria-hidden="true"></a>      <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
-<span id="cb2-24"><a href="#cb2-24" aria-hidden="true"></a>      <span class="op">&amp;</span> runM</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true"></a>      <span class="op">&amp;</span> liftToHandler</span>
-<span id="cb2-26"><a href="#cb2-26" aria-hidden="true"></a></span>
-<span id="cb2-27"><a href="#cb2-27" aria-hidden="true"></a><span class="ot">    liftToHandler ::</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">ReservationError</span> a) <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
-<span id="cb2-28"><a href="#cb2-28" aria-hidden="true"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> <span class="fu">fmap</span> handleErrors</span>
-<span id="cb2-29"><a href="#cb2-29" aria-hidden="true"></a></span>
-<span id="cb2-30"><a href="#cb2-30" aria-hidden="true"></a><span class="ot">    handleErrors ::</span> <span class="dt">Either</span> <span class="dt">ReservationError</span> b <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ServerError</span> b</span>
-<span id="cb2-31"><a href="#cb2-31" aria-hidden="true"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
-<span id="cb2-32"><a href="#cb2-32" aria-hidden="true"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
-<p>The interesting point here is the usage of the <code>Config</code> parameter <code>config</code> in <code>interpretServer</code>. It is used to select concrete effect handler functions in <code>runSelectedKvsBackend conf</code> and <code>runSelectedTrace conf</code>:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- | global application configuration</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Config</span> <span class="ot">=</span> <span class="dt">Config</span> {</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="ot">  port        ::</span> <span class="dt">Int</span>     <span class="co">-- ^ the port where the server is listening</span></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a>,<span class="ot"> backend     ::</span> <span class="dt">Backend</span> <span class="co">-- ^ selects the persistence backend for the KV store</span></span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a>,<span class="ot"> dbPath      ::</span> <span class="dt">String</span>  <span class="co">-- ^ the path to the database</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>,<span class="ot"> verbose     ::</span> <span class="dt">Bool</span>    <span class="co">-- ^ True enables logging</span></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a>} <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a></span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">Backend</span> <span class="ot">=</span> <span class="dt">SQLite</span> <span class="op">|</span> <span class="dt">FileServer</span> <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a></span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a></span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a><span class="co">-- | can select between SQLite or FileServer persistence backends.</span></span>
-<span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a><span class="ot">runSelectedKvsBackend ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
-<span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>                 <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb3-15"><a href="#cb3-15" aria-hidden="true"></a>runSelectedKvsBackend config <span class="ot">=</span> <span class="kw">case</span> backend config <span class="kw">of</span></span>
-<span id="cb3-16"><a href="#cb3-16" aria-hidden="true"></a>  <span class="dt">SQLite</span>     <span class="ot">-&gt;</span> runKvsAsSQLite</span>
-<span id="cb3-17"><a href="#cb3-17" aria-hidden="true"></a>  <span class="dt">FileServer</span> <span class="ot">-&gt;</span> runKvsAsFileServer</span>
-<span id="cb3-18"><a href="#cb3-18" aria-hidden="true"></a>  </span>
-<span id="cb3-19"><a href="#cb3-19" aria-hidden="true"></a><span class="co">-- | if the config flag verbose is set to True, trace to Console, else ignore all trace messages</span></span>
-<span id="cb3-20"><a href="#cb3-20" aria-hidden="true"></a><span class="ot">runSelectedTrace ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> (<span class="dt">Sem</span> (<span class="dt">Trace</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a)</span>
-<span id="cb3-21"><a href="#cb3-21" aria-hidden="true"></a>runSelectedTrace config <span class="ot">=</span></span>
-<span id="cb3-22"><a href="#cb3-22" aria-hidden="true"></a>  <span class="kw">if</span> verbose config</span>
-<span id="cb3-23"><a href="#cb3-23" aria-hidden="true"></a>    <span class="kw">then</span> traceToStdout</span>
-<span id="cb3-24"><a href="#cb3-24" aria-hidden="true"></a>    <span class="kw">else</span> ignoreTrace</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">runWarpAppServer ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> (<span class="dt">AppServer</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>runWarpAppServer <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- serving an application by constructing it from a config</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">ServeAppFromConfig</span> config <span class="ot">-&gt;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    embed <span class="op">$</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> app <span class="ot">=</span> createApp config</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>       <span class="kw">in</span> <span class="kw">do</span> </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;starting Warp on Port &quot;</span> <span class="op">++</span> <span class="fu">show</span> (port config)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        Warp.run (port config) app</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="ot">createApp ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Application</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>createApp config <span class="ot">=</span> serve reservationAPI (liftServer config)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="ot">liftServer ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">ServerT</span> <span class="dt">ReservationAPI</span> <span class="dt">Handler</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>liftServer config <span class="ot">=</span> hoistServer reservationAPI (interpretServer config) reservationServer</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>  <span class="kw">where</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="ot">    interpretServer ::</span> (<span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>                    <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> '[<span class="dt">KVS</span> k v, <span class="dt">Input</span> <span class="dt">Config</span>, <span class="dt">Trace</span>, <span class="dt">Error</span> <span class="dt">ReservationError</span>, <span class="dt">Embed</span> <span class="dt">IO</span>] a <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    interpretServer config sem  <span class="ot">=</span>  sem</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> runSelectedKvsBackend config</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> runInputConst config</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> runSelectedTrace config</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> runError <span class="op">@</span><span class="dt">ReservationError</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> runM</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>      <span class="op">&amp;</span> liftToHandler</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="ot">    liftToHandler ::</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">ReservationError</span> a) <span class="ot">-&gt;</span> <span class="dt">Handler</span> a</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>    liftToHandler <span class="ot">=</span> <span class="dt">Handler</span> <span class="op">.</span> <span class="dt">ExceptT</span> <span class="op">.</span> <span class="fu">fmap</span> handleErrors</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a><span class="ot">    handleErrors ::</span> <span class="dt">Either</span> <span class="dt">ReservationError</span> b <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ServerError</span> b</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>    handleErrors (<span class="dt">Left</span> (<span class="dt">ReservationNotPossible</span> msg)) <span class="ot">=</span> <span class="dt">Left</span> err412 { errBody <span class="ot">=</span> <span class="fu">pack</span> msg}</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>    handleErrors (<span class="dt">Right</span> value) <span class="ot">=</span> <span class="dt">Right</span> value</span></code></pre></div>
+<p>The interesting point here is the usage of the <code>Config</code> parameter <code>config</code> in <code>interpretServer</code>.
+It is used to select concrete effect handler functions in <code>runSelectedKvsBackend conf</code> and <code>runSelectedTrace conf</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | global application configuration</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Config</span> <span class="ot">=</span> <span class="dt">Config</span> {</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  port        ::</span> <span class="dt">Int</span>     <span class="co">-- ^ the port where the server is listening</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>,<span class="ot"> backend     ::</span> <span class="dt">Backend</span> <span class="co">-- ^ selects the persistence backend for the KV store</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>,<span class="ot"> dbPath      ::</span> <span class="dt">String</span>  <span class="co">-- ^ the path to the database</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>,<span class="ot"> verbose     ::</span> <span class="dt">Bool</span>    <span class="co">-- ^ True enables logging</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>} <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Backend</span> <span class="ot">=</span> <span class="dt">SQLite</span> <span class="op">|</span> <span class="dt">FileServer</span> <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>, <span class="dt">Read</span>)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- | can select between SQLite or FileServer persistence backends.</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="ot">runSelectedKvsBackend ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k, <span class="dt">Read</span> k, <span class="dt">ToJSON</span> v, <span class="dt">FromJSON</span> v)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>                 <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">KVS</span> k v <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>runSelectedKvsBackend config <span class="ot">=</span> <span class="kw">case</span> backend config <span class="kw">of</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>  <span class="dt">SQLite</span>     <span class="ot">-&gt;</span> runKvsAsSQLite</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">FileServer</span> <span class="ot">-&gt;</span> runKvsAsFileServer</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="co">-- | if the config flag verbose is set to True, trace to Console, else ignore all trace messages</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a><span class="ot">runSelectedTrace ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> (<span class="dt">Sem</span> (<span class="dt">Trace</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a)</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>runSelectedTrace config <span class="ot">=</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>  <span class="kw">if</span> verbose config</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    <span class="kw">then</span> traceToStdout</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>    <span class="kw">else</span> ignoreTrace</span></code></pre></div>
 <p>In addition to this <code>config</code> is also used by the <code>Input</code> effect handler <code>runInputConst conf</code>:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="co">-- | Run an 'Input' effect by always giving back the same value.</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a><span class="ot">runInputConst ::</span> i <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">Input</span> i '<span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>runInputConst c <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>  <span class="dt">Input</span> <span class="ot">-&gt;</span> <span class="fu">pure</span> c</span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Run an 'Input' effect by always giving back the same value.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ot">runInputConst ::</span> i <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">Input</span> i '<span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>runInputConst c <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">Input</span> <span class="ot">-&gt;</span> <span class="fu">pure</span> c</span></code></pre></div>
 <p>This allows effect handlers like <code>runKvsAsSQLite</code> to use <code>config</code> as configuration. For example to obtain the database connection:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy</span></span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy.Input</span>                 (<span class="dt">Input</span>, input)</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true"></a><span class="kw">import</span>           <span class="dt">Polysemy.Trace</span>                 (<span class="dt">Trace</span>, trace)</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true"></a></span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true"></a><span class="co">-- | delete a value from db identified by key</span></span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true"></a><span class="ot">deleteAction ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k) <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true"></a>deleteAction key <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;deleteAction: &quot;</span> <span class="op">++</span> <span class="fu">show</span> key</span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true"></a>  conn <span class="ot">&lt;-</span> connectionFrom input</span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true"></a>  embed <span class="op">$</span> SQL.executeNamed conn <span class="st">&quot;DELETE FROM store WHERE key = :key&quot;</span> [<span class="st">&quot;:key&quot;</span> <span class="op">:=</span> <span class="fu">show</span> key]</span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true"></a></span>
-<span id="cb5-12"><a href="#cb5-12" aria-hidden="true"></a></span>
-<span id="cb5-13"><a href="#cb5-13" aria-hidden="true"></a><span class="co">-- | create a connection based on configuration data, make sure table &quot;store&quot; exists.</span></span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true"></a><span class="ot">connectionFrom ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> r <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r <span class="dt">SQL.Connection</span></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true"></a>connectionFrom c <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb5-16"><a href="#cb5-16" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> c</span>
-<span id="cb5-17"><a href="#cb5-17" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;open connection to: &quot;</span> <span class="op">++</span> dbPath config</span>
-<span id="cb5-18"><a href="#cb5-18" aria-hidden="true"></a>  embed (getConnection (dbPath config))</span>
-<span id="cb5-19"><a href="#cb5-19" aria-hidden="true"></a>    <span class="kw">where</span></span>
-<span id="cb5-20"><a href="#cb5-20" aria-hidden="true"></a><span class="ot">      getConnection ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">SQL.Connection</span></span>
-<span id="cb5-21"><a href="#cb5-21" aria-hidden="true"></a>      getConnection dbFile <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb5-22"><a href="#cb5-22" aria-hidden="true"></a>        conn <span class="ot">&lt;-</span> SQL.open dbFile</span>
-<span id="cb5-23"><a href="#cb5-23" aria-hidden="true"></a>        SQL.execute_ conn <span class="st">&quot;CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT)&quot;</span></span>
-<span id="cb5-24"><a href="#cb5-24" aria-hidden="true"></a>        <span class="fu">return</span> conn</span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">Polysemy</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">Polysemy.Input</span>                 (<span class="dt">Input</span>, input)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">Polysemy.Trace</span>                 (<span class="dt">Trace</span>, trace)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- | delete a value from db identified by key</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="ot">deleteAction ::</span> (<span class="dt">Member</span> (<span class="dt">Input</span> <span class="dt">Config</span>) r, <span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r, <span class="dt">Show</span> k) <span class="ot">=&gt;</span> k <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>deleteAction key <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  trace <span class="op">$</span> <span class="st">&quot;deleteAction: &quot;</span> <span class="op">++</span> <span class="fu">show</span> key</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>  conn <span class="ot">&lt;-</span> connectionFrom input</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>  embed <span class="op">$</span> SQL.executeNamed conn <span class="st">&quot;DELETE FROM store WHERE key = :key&quot;</span> [<span class="st">&quot;:key&quot;</span> <span class="op">:=</span> <span class="fu">show</span> key]</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="co">-- | create a connection based on configuration data, make sure table &quot;store&quot; exists.</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="ot">connectionFrom ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r, <span class="dt">Member</span> <span class="dt">Trace</span> r) <span class="ot">=&gt;</span> <span class="dt">Sem</span> r <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r <span class="dt">SQL.Connection</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>connectionFrom c <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  config <span class="ot">&lt;-</span> c</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>  trace <span class="op">$</span> <span class="st">&quot;open connection to: &quot;</span> <span class="op">++</span> dbPath config</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>  embed (getConnection (dbPath config))</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">where</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="ot">      getConnection ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">SQL.Connection</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>      getConnection dbFile <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>        conn <span class="ot">&lt;-</span> SQL.open dbFile</span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>        SQL.execute_ conn <span class="st">&quot;CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT)&quot;</span></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>        <span class="fu">return</span> conn</span></code></pre></div>
 <p>My reasoning was as follows: As I needed <code>config</code> as an explicit parameter to <code>serveAppFromConfig</code> in the <code>main</code> glue code and <code>loadConfig</code>being of type <code>IO Config</code>, I thought I had to explicitely execute it in the <code>IO</code> Monad and then handing it into the Polysemy effect chain:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  config <span class="ot">&lt;-</span> loadConfig       <span class="co">-- load config</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  serveAppFromConfig config  <span class="co">-- create app from config and run it via AppServer effect</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runWarpAppServer       <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
 <p>But it turned out that I had just not thought things through deep enough!</p>
 <h2 id="chaining-of-config-loading-and-application-execution-as-effects">Chaining of Config loading and application execution as effects</h2>
-<p>If we take a step back and look at the code in the <code>UseCases</code> package we’ll see that we already have shown how to combine different effects into a sequence within the Polysemy <code>Sem</code> Monad. Take for example the following use case implementation:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true"></a><span class="ot">cancel ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r)  <span class="ot">=&gt;</span> <span class="dt">Dom.Reservation</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true"></a>cancel res<span class="op">@</span>(<span class="dt">Dom.Reservation</span> date _ _ _) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;deleting reservation &quot;</span> <span class="op">++</span> <span class="fu">show</span> res</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true"></a>  reservations <span class="ot">&lt;-</span> fetch date</span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;before: &quot;</span> <span class="op">++</span> <span class="fu">show</span> reservations</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true"></a>  <span class="kw">let</span> after <span class="ot">=</span> Dom.cancelReservation res reservations</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true"></a>  trace <span class="op">$</span> <span class="st">&quot;after: &quot;</span> <span class="op">++</span> <span class="fu">show</span> after</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true"></a>  insertKvs date after</span></code></pre></div>
+<p>If we take a step back and look at the code in the <code>UseCases</code> package we’ll see that we already have shown how to combine different effects into a sequence within the Polysemy <code>Sem</code> Monad.
+Take for example the following use case implementation:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">cancel ::</span> (<span class="dt">Member</span> <span class="dt">Persistence</span> r, <span class="dt">Member</span> <span class="dt">Trace</span> r)  <span class="ot">=&gt;</span> <span class="dt">Dom.Reservation</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>cancel res<span class="op">@</span>(<span class="dt">Dom.Reservation</span> date _ _ _) <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  trace <span class="op">$</span> <span class="st">&quot;deleting reservation &quot;</span> <span class="op">++</span> <span class="fu">show</span> res</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  reservations <span class="ot">&lt;-</span> fetch date</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  trace <span class="op">$</span> <span class="st">&quot;before: &quot;</span> <span class="op">++</span> <span class="fu">show</span> reservations</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> after <span class="ot">=</span> Dom.cancelReservation res reservations</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  trace <span class="op">$</span> <span class="st">&quot;after: &quot;</span> <span class="op">++</span> <span class="fu">show</span> after</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  insertKvs date after</span></code></pre></div>
 <p>So instead of glueing stuff together in <code>main :: IO ()</code>, wouldn’t it be much more in line with our overall intention to formulate the sequencing of configuration loading and hosting the WAI application as a sequence of Polysemy effects? For example:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co">-- | load configuration via ConfigProvider effect, then contruct and run app via AppServer effect</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a><span class="ot">configureAndServeApp ::</span>  (<span class="dt">Member</span> <span class="dt">ConfigProvider</span> r, <span class="dt">Member</span> <span class="dt">AppServer</span> r)  <span class="ot">=&gt;</span> <span class="dt">Sem</span> r ()</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a>configureAndServeApp <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a>  config <span class="ot">&lt;-</span> getConfig</span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a>  serveAppFromConfig config</span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | load configuration via ConfigProvider effect, then contruct and run app via AppServer effect</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ot">configureAndServeApp ::</span>  (<span class="dt">Member</span> <span class="dt">ConfigProvider</span> r, <span class="dt">Member</span> <span class="dt">AppServer</span> r)  <span class="ot">=&gt;</span> <span class="dt">Sem</span> r ()</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>configureAndServeApp <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  config <span class="ot">&lt;-</span> getConfig</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  serveAppFromConfig config</span></code></pre></div>
 <p>In this function we use two effects <code>ConfigProvider</code> and <code>Appserver</code>. I already described the <code>AppServer</code> effect in <a href="https://thma.github.io/posts/2022-07-04-polysemy-and-warp.html">my previous blog post</a>. So we only have to consider the <code>ConfigProvider</code> effect here.</p>
 <h2 id="defining-a-configprovider-effect">Defining a ConfigProvider Effect</h2>
 <p>First we define the ConfigProvider Effect. It provides an effect function <code>getConfig :: Member ConfigProvider r =&gt; Sem r Config</code>:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true"></a><span class="ot">{-# LANGUAGE TemplateHaskell #-}</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true"></a></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.ConfigProvider</span> <span class="kw">where</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true"></a></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Polysemy</span></span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true"></a></span>
-<span id="cb9-8"><a href="#cb9-8" aria-hidden="true"></a><span class="co">-- | The ConfigProvider effect can be used to provide and application with a Config instance.</span></span>
-<span id="cb9-9"><a href="#cb9-9" aria-hidden="true"></a><span class="kw">data</span> <span class="dt">ConfigProvider</span> m a <span class="kw">where</span></span>
-<span id="cb9-10"><a href="#cb9-10" aria-hidden="true"></a>  <span class="dt">GetConfig</span><span class="ot"> ::</span> <span class="dt">ConfigProvider</span> m <span class="dt">Config</span></span>
-<span id="cb9-11"><a href="#cb9-11" aria-hidden="true"></a></span>
-<span id="cb9-12"><a href="#cb9-12" aria-hidden="true"></a><span class="co">-- makeSem uses TemplateHaskell to generate effect functions (or smart Constructors) from the GADT definition:</span></span>
-<span id="cb9-13"><a href="#cb9-13" aria-hidden="true"></a><span class="co">-- getConfig :: Member ConfigProvider r =&gt; Sem r Config</span></span>
-<span id="cb9-14"><a href="#cb9-14" aria-hidden="true"></a>makeSem '<span class="dt">'ConfigProvider</span></span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE TemplateHaskell #-}</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.ConfigProvider</span> <span class="kw">where</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Polysemy</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co">-- | The ConfigProvider effect can be used to provide and application with a Config instance.</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ConfigProvider</span> m a <span class="kw">where</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">GetConfig</span><span class="ot"> ::</span> <span class="dt">ConfigProvider</span> m <span class="dt">Config</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- makeSem uses TemplateHaskell to generate effect functions (or smart Constructors) from the GADT definition:</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co">-- getConfig :: Member ConfigProvider r =&gt; Sem r Config</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>makeSem '<span class="dt">'ConfigProvider</span></span></code></pre></div>
 <h2 id="implementing-the-configprovider-effect">Implementing the ConfigProvider effect</h2>
-<p>Next we define an implementation of the <code>ConfigProvider</code> effect by defining an effect handler function that loads a <code>Config</code> instance from a file:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.FileConfigProvider</span> <span class="kw">where</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">ExternalInterfaces.ConfigProvider</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true"></a><span class="kw">import</span> <span class="dt">Polysemy</span> (<span class="dt">Embed</span>, <span class="dt">Member</span>, <span class="dt">Sem</span>, embed, interpret)</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true"></a></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true"></a><span class="co">-- | provides a Config object from a local file path</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true"></a><span class="ot">runFileConfigProvider ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">ConfigProvider</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true"></a>runFileConfigProvider path <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true"></a>  <span class="dt">GetConfig</span> <span class="ot">-&gt;</span> embed <span class="op">$</span> loadConfig path</span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true"></a></span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true"></a></span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true"></a><span class="co">-- | load application config from file &quot;application.config&quot;</span></span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true"></a><span class="ot">loadConfig ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
-<span id="cb10-15"><a href="#cb10-15" aria-hidden="true"></a>loadConfig path <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb10-16"><a href="#cb10-16" aria-hidden="true"></a>  input <span class="ot">&lt;-</span> <span class="fu">readFile</span> path</span>
-<span id="cb10-17"><a href="#cb10-17" aria-hidden="true"></a>  <span class="fu">pure</span> <span class="op">$</span> <span class="fu">read</span> input</span></code></pre></div>
+<p>Next we define an implementation of the <code>ConfigProvider</code> effect by defining an effect handler function
+that loads a <code>Config</code> instance from a file:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">ExternalInterfaces.FileConfigProvider</span> <span class="kw">where</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">InterfaceAdapters.Config</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">ExternalInterfaces.ConfigProvider</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Polysemy</span> (<span class="dt">Embed</span>, <span class="dt">Member</span>, <span class="dt">Sem</span>, embed, interpret)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co">-- | provides a Config object from a local file path</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ot">runFileConfigProvider ::</span> (<span class="dt">Member</span> (<span class="dt">Embed</span> <span class="dt">IO</span>) r) <span class="ot">=&gt;</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">Sem</span> (<span class="dt">ConfigProvider</span> <span class="op">:</span> r) a <span class="ot">-&gt;</span> <span class="dt">Sem</span> r a</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>runFileConfigProvider path <span class="ot">=</span> interpret <span class="op">$</span> \<span class="kw">case</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">GetConfig</span> <span class="ot">-&gt;</span> embed <span class="op">$</span> loadConfig path</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="co">-- | load application config from file &quot;application.config&quot;</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="ot">loadConfig ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Config</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>loadConfig path <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>  input <span class="ot">&lt;-</span> <span class="fu">readFile</span> path</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pure</span> <span class="op">$</span> <span class="fu">read</span> input</span></code></pre></div>
 <h2 id="the-new-and-shining-main-function">The new and shining main function</h2>
 <p>Now we have all the ingredients ready to clean up the glue code in <code>main :: IO ()</code>:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true"></a>  configureAndServeApp</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true"></a>    <span class="op">&amp;</span> runFileConfigProvider <span class="st">&quot;application.config&quot;</span>  <span class="co">-- provide Config from a file</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true"></a>    <span class="op">&amp;</span> runWarpAppServer                            <span class="co">-- use Warp to run rest application</span></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  configureAndServeApp</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runFileConfigProvider <span class="st">&quot;application.config&quot;</span>  <span class="co">-- provide Config from a file</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runWarpAppServer                            <span class="co">-- use Warp to run rest application</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span> runM</span></code></pre></div>
 <p>The complete control of the application is now exclusively managed by the Polysemy effect library.</p>
 <h2 id="conclusion">Conclusion</h2>
-<p>I’m excited about how the comments on my last blog post have helped me develop the Polysemy Clean Architecture idea into a much improved design.</p>
-<p>So I’m sure that this post will trigger some more discussions and will help to improve remaining grey spots in the overall concept.</p>
+<p>I’m excited about how the comments on my last blog post have helped me develop the
+Polysemy Clean Architecture idea into a much improved design.</p>
+<p>So I’m sure that this post will trigger some more discussions and will help to improve remaining grey spots in the
+overall concept.</p>
 
 </main>
 
