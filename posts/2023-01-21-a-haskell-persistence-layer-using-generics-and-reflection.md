@@ -9,7 +9,7 @@ tags: haskell, persistence, generics, reflection, hdbc, sqlite, orm, database, s
 -->
 
 
-<a href="https://github.com/thma/generic-persistence"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
+<a href="https://github.com/thma/generic-persistence/tree/archive-blog-post-2023-01-23"><img src="https://thma.github.io/img/forkme.png" height="20" ></a>
 
 
 ## Abstract
@@ -18,6 +18,9 @@ In this post I'll describe how to write a minimalistic Haskell persistence layer
 My approach will rely heavily on Generics (`Data.Data`, `Data.Typeable`) and Reflection (`Type.Reflection`).
 
 The design goal is to avoid any boilerplate code.
+
+**Please note:** I received some helpful feedback on this post. I have now updated the code to reflect the suggestions.
+So the code in this post is now outdated. Please refer to the [GitHub repository](https://github.com/thma/generic-persistence/) for the latest version.
 
 ## Introduction
 
