@@ -1,7 +1,7 @@
 ---
 title: Clean Architecture Revisited
 author: Thomas Mahler
-tags: haskell, clean architecture, domain driven design, functional programming, decoupling, dependency injection, higher order functions
+tags: haskell, clean architecture, domain driven design, functional programming, decoupling, dependency injection, higher order functions, patterns, refactoring, unit testing
 ---
 
 
@@ -10,18 +10,15 @@ tags: haskell, clean architecture, domain driven design, functional programming,
 
 ## Interesting design challenges in seemingly simple programs
 
-The other day I was writing a Haskell program with quite a limited scope:
-
-- retrieving data from a REST API
-- storing the data in CSV files.
-
+The other day I wrote a simple Haskell program that retrieves data from a REST API and processes it.
 The task at hand sounded simple enough to just start coding without too much upfront thinking.
-This blog post is about the process of discovering the shortcomings of my initial design and how I improved them by some simple refactorings.
-As all the interesting stuff happened in the API access, I'll focus on that part of the code.
 
-In order to allow you to experiment with the code yourself, I'm not using the proprietary API of my original project but rather a publicly available REST API (https://openlibrary.org/developers/api) in this blog post.
+This blog post is about how I discovered the shortcomings of my original design and how I improved it with some simple refactorings. 
+Since everything interesting happens in the API access, I will focus on this part of the code.
 
-## The initial design
+In order to allow you to experiment with the code yourself, I'm not using the proprietary API of my original project but rather a publicly available REST API ([OpenLibrary](https://openlibrary.org/developers/api)).
+
+## The original design
 
 So without further ado, let's start with the domain data types:
 
