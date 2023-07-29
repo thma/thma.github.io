@@ -26,3 +26,5 @@ stack.yaml.lock
 .idea/
 *.iml
 tasks.json
+*/.DS_Store
+

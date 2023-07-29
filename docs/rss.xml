@@ -7,8 +7,269 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sat, 21 Jan 2023 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Sat, 29 Jul 2023 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Clean Architecture Revisited</title>
+    <link>https://thma.github.io//posts/2023-07-29-clean-architecture-revisited.html</link>
+    <description><![CDATA[<div class="info">
+    <em>Posted on July 29, 2023
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/clean-architecture-with-functions/"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="interesting-design-challenges-in-seemingly-simple-programs">Interesting design challenges in seemingly simple programs</h2>
+<p>The other day I was writing a Haskell program with quite a limited scope:</p>
+<ul>
+<li>retrieving data from a REST API</li>
+<li>storing the data in CSV files.</li>
+</ul>
+<p>The task at hand sounded simple enough to just start coding without too much upfront thinking.
+This blog post is about the process of discovering the shortcomings of my initial design and how I improved them by some simple refactorings.
+As all the interesting stuff happened in the API access, I’ll focus on that part of the code.</p>
+<p>In order to allow you to experiment with the code yourself, I’m not using the proprietary API of my original project but rather a publicly available REST API (https://openlibrary.org/developers/api) in this blog post.</p>
+<h2 id="the-initial-design">The initial design</h2>
+<p>So without further ado, let’s start with the domain data types:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Book</span> <span class="ot">=</span> <span class="dt">Book</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  {<span class="ot"> bkTitle   ::</span> <span class="dt">String</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ot">    bkAuthors ::</span> [<span class="dt">String</span>],</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ot">    bkYear    ::</span> <span class="dt">Maybe</span> <span class="dt">Int</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">FromJSON</span> <span class="dt">Book</span> <span class="kw">where</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  parseJSON (<span class="dt">Object</span> b) <span class="ot">=</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Book</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>      <span class="op">&lt;$&gt;</span> b <span class="op">.:</span> <span class="st">&quot;title&quot;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>      <span class="op">&lt;*&gt;</span> b <span class="op">.:?</span> <span class="st">&quot;author_name&quot;</span> <span class="op">.!=</span> []</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>      <span class="op">&lt;*&gt;</span> b <span class="op">.:?</span> <span class="st">&quot;first_publish_year&quot;</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  parseJSON _ <span class="ot">=</span> <span class="fu">mempty</span></span></code></pre></div>
+<p>The <code>Book</code> type is a simple record type with a few fields. The <code>FromJSON</code> instance is used to parse the JSON data returned by the REST API.</p>
+<p>Next, we need a function to retrieve the data from the REST API. The API allows us to retrieve the data in pages. Each page contains a list of books and the total number of books found. The following function retrieves a single page. The parameters are the query string, the page size and the page number:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">getBookPage ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">BookResp</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>getBookPage queryString pageSize pageId <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  request <span class="ot">&lt;-</span> parseRequest <span class="op">$</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    searchUrl <span class="op">++</span> queryString <span class="op">++</span> </span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>      <span class="st">&quot;&amp;page=&quot;</span> <span class="op">++</span> <span class="fu">show</span> pageId <span class="op">++</span> </span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>      <span class="st">&quot;&amp;limit=&quot;</span> <span class="op">++</span> <span class="fu">show</span> pageSize</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  response <span class="ot">&lt;-</span> httpJSON request</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> getResponseBody response</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">BookResp</span> <span class="ot">=</span> <span class="dt">BookResp</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  {<span class="ot"> brDocs  ::</span> [<span class="dt">Book</span>],</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="ot">    brFound ::</span> <span class="dt">Int</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">FromJSON</span> <span class="dt">BookResp</span> <span class="kw">where</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>  parseJSON (<span class="dt">Object</span> br) <span class="ot">=</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="dt">BookResp</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>      <span class="op">&lt;$&gt;</span> br <span class="op">.:</span> <span class="st">&quot;docs&quot;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>      <span class="op">&lt;*&gt;</span> br <span class="op">.:</span> <span class="st">&quot;numFound&quot;</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  parseJSON _ <span class="ot">=</span> <span class="fu">mempty</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="ot">searchUrl ::</span> <span class="dt">String</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>searchUrl <span class="ot">=</span> <span class="st">&quot;http://openlibrary.org/search.json?q=&quot;</span></span></code></pre></div>
+<p>Based on this function which retrieves a single page, we can write a function which retrieves all pages:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ot">searchBooks ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> [<span class="dt">Book</span>]</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>searchBooks pageSize limitPages queryString <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  firstPage <span class="ot">&lt;-</span> getBookPage queryString pageSize <span class="dv">1</span> <span class="co">-- index starts at 1 !</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> numOfBooks <span class="ot">=</span> brFound firstPage</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>      numPages <span class="ot">=</span> <span class="fu">min</span> (numOfBooks <span class="ot">`div`</span> pageSize <span class="op">+</span> <span class="dv">1</span>) limitPages</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>      otherPages <span class="ot">=</span> </span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">if</span> numPages <span class="op">==</span> <span class="dv">1</span> </span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>          <span class="kw">then</span> [] </span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="fu">map</span> (getBookPage queryString pageSize) [<span class="dv">1</span> <span class="op">..</span> numPages]</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  allPages <span class="ot">&lt;-</span> (firstPage <span class="op">:</span>) <span class="op">&lt;$&gt;</span> <span class="fu">sequence</span> otherPages</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> <span class="fu">concatMap</span> brDocs allPages</span></code></pre></div>
+<p>The <code>searchBooks</code> function takes a page size, a limit for the number of pages and a query string.
+It then retrieves all pages and concatenates the books from all pages into a single list.</p>
+<p>Now we have all the pieces in place to write the main function:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- search for books with &quot;Haskell Curry&quot; in title or author fields, </span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- limit to 10 pages of 50 books each (== 500 books)</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  books <span class="ot">&lt;-</span> searchBooks <span class="dv">50</span> <span class="dv">10</span> <span class="st">&quot;Haskell Language&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Number of matching books: &quot;</span> <span class="op">++</span> <span class="fu">show</span> (<span class="fu">length</span> books)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> (<span class="fu">putStrLn</span> <span class="op">.</span> bkTitle) books</span></code></pre></div>
+<p>This will print the number of books found and their respective titles.</p>
+<pre><code>Number of matching books: 34</code></pre>
+<p>A quick manual check on the Open Library website confirms that the number of books found is indeed correct.</p>
+<p>That was is easy, wasn’t it? But wait, let’s have a closer look by changing the page size…</p>
+<h2 id="its-just-an-off-by-one-error">It’s just an off-by-one error…</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- search for books with &quot;Haskell Curry&quot; in title or author fields, </span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- limit to 10 pages of 10 books each (== 100 books)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  books <span class="ot">&lt;-</span> searchBooks <span class="dv">10</span> <span class="dv">10</span> <span class="st">&quot;Haskell Language&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Number of matching books: &quot;</span> <span class="op">++</span> <span class="fu">show</span> (<span class="fu">length</span> books)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> (<span class="fu">putStrLn</span> <span class="op">.</span> bkTitle) books</span></code></pre></div>
+<p>Now we get the following output:</p>
+<pre><code>Number of matching books: 44</code></pre>
+<p>What happened here? Instead of the correct number of 34 books we now get 44 books returned.
+It seems that this was caused by the changing the page size. As we get exactly 10 books more as expected it seems that we get one page more than we asked for.</p>
+<p>So let’s have a closer look at the <code>searchBooks</code> function.
+It starts by retrieving the first page which also contains the total number of found books.
+This value is bound to the <code>numOfBooks</code> variable.
+Next the total number of pages is calculated by dividing the number of books by the page size and adding 1.
+By binding the minimum of this value and the limit for the number of pages to the <code>numPages</code> variable, we ensure that we don’t retrieve more pages than we asked for.
+Finally, the <code>otherPages</code> variable is bound to a list of all pages except the first page.</p>
+<p>And here we have our off-by-one error. The list comprehension should start at 2 instead of 1:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ot">searchBooks ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> [<span class="dt">Book</span>]</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>searchBooks pageSize limitPages queryString <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  firstPage <span class="ot">&lt;-</span> getBookPage queryString pageSize <span class="dv">1</span> <span class="co">-- index starts at 1 !</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> numOfBooks <span class="ot">=</span> brFound firstPage</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>      numPages <span class="ot">=</span> <span class="fu">min</span> (numOfBooks <span class="ot">`div`</span> pageSize <span class="op">+</span> <span class="dv">1</span>) limitPages</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>      otherPages <span class="ot">=</span> </span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">if</span> numPages <span class="op">==</span> <span class="dv">1</span> </span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>          <span class="kw">then</span> [] </span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="fu">map</span> (getBookPage queryString pageSize) [<span class="dv">2</span> <span class="op">..</span> numPages]</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>  allPages <span class="ot">&lt;-</span> (firstPage <span class="op">:</span>) <span class="op">&lt;$&gt;</span> <span class="fu">sequence</span> otherPages</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> <span class="fu">concatMap</span> brDocs allPages</span></code></pre></div>
+<p>This finding seems to be a perfect fit for the following quote:</p>
+<blockquote>
+<p>There are only two hard problems in computer science:</p>
+<ol start="0" type="1">
+<li>cache invalidation</li>
+<li>naming things.</li>
+<li>off-by-one errors</li>
+</ol>
+</blockquote>
+<h2 id="do-as-i-say-not-as-i-do.">Do as I say, not as I do.</h2>
+<p>At this point I felt a bit uncomfortable as I realized that I should have written some unit tests to catch this error. Or even better to start with the tests and then write the code.</p>
+<p>If you have read some of my other blog posts, you might have noticed that I’m a big fan of unit testing and property based testing in particular.
+So why didn’t I write any tests for this code?</p>
+<p>The answer is simple: <code>searchBooks</code> is directly coupled to the page access function <code>getBookPage</code>.
+All unit tests for <code>searchBooks</code> would interact directly with the real openlibrary API. This would render the tests unstable as the API could be offline or give different results over time.</p>
+<p>So what can we do about this? We need to decouple the <code>searchBooks</code> function from the <code>getBookPage</code> function. Functional programming offers us a simple solution for this problem: <em>higher order functions</em>. In this case: allowing to pass the page access function as a parameter to <code>searchBooks</code>.</p>
+<h2 id="from-cruft-to-craft">From cruft to craft</h2>
+<p>In this section we will refactor the code to allow passing the page access function as a parameter to <code>searchBooks</code>.
+Let’s start by defining a type for the page access function. I have also changed the <code>Int</code> parameters to <code>Natural</code> as I don’t want to allow negative page sizes and offsets.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">PageAccess</span> <span class="ot">=</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Natural</span> <span class="ot">-&gt;</span> <span class="dt">Natural</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">BookResp</span></span></code></pre></div>
+<p>Next we will change the signature of <code>getBookPage</code> to match this type:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ot">getBookPage ::</span> <span class="dt">PageAccess</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>getBookPage queryString pageSize pageId <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  request <span class="ot">&lt;-</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    parseRequest <span class="op">$</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>      searchUrl</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>        <span class="op">++</span> queryString</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">++</span> <span class="st">&quot;&amp;page=&quot;</span>  <span class="op">++</span> <span class="fu">show</span> pageId</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">++</span> <span class="st">&quot;&amp;limit=&quot;</span> <span class="op">++</span> <span class="fu">show</span> pageSize</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  response <span class="ot">&lt;-</span> httpJSON request</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> getResponseBody response</span></code></pre></div>
+<p>Finally we will rewrite <code>searchBooks</code> to have an additional parameter of type <code>PageAccess</code>:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">searchBooks ::</span> <span class="dt">PageAccess</span> <span class="ot">-&gt;</span> <span class="dt">Natural</span> <span class="ot">-&gt;</span> <span class="dt">Natural</span> <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> [<span class="dt">Book</span>]</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>searchBooks bookPageFun pageSize limitPages queryString <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  firstPage <span class="ot">&lt;-</span> bookPageFun queryString pageSize <span class="dv">1</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> numOfBooks <span class="ot">=</span> brFound firstPage</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>      numPages <span class="ot">=</span> <span class="fu">min</span> (numOfBooks <span class="ot">`div`</span> pageSize <span class="op">+</span> <span class="dv">1</span>) limitPages</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>      otherPages <span class="ot">=</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">if</span> numPages <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>          <span class="kw">then</span> []</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="fu">map</span> (bookPageFun queryString pageSize) [<span class="dv">2</span> <span class="op">..</span> numPages]</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>  allPages <span class="ot">&lt;-</span> (firstPage <span class="op">:</span>) <span class="op">&lt;$&gt;</span> <span class="fu">sequence</span> otherPages</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> <span class="fu">concatMap</span> brDocs allPages</span></code></pre></div>
+<p>This simple change allows us to use <code>searchBooks</code> with different page access functions.
+The main function now looks like this:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- search for books with &quot;Haskell Curry&quot; in title or author fields, </span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- limit to 10 pages of 10 books each (== 100 books)</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> openLibrarySearch <span class="ot">=</span> searchBooks getBookPage <span class="dv">10</span> <span class="dv">10</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  books <span class="ot">&lt;-</span> openLibrarySearch <span class="st">&quot;Haskell Curry&quot;</span> </span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Number of matching books: &quot;</span> <span class="op">++</span> <span class="fu">show</span> (<span class="fu">length</span> books)</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> (<span class="fu">putStrLn</span> <span class="op">.</span> bkTitle) books</span></code></pre></div>
+<h2 id="finally-some-unit-tests">Finally, some unit tests</h2>
+<p>We can now use this decoupling to pass a mock page access function to <code>searchBooks</code> in order to write unit tests for it.
+Let’s start by writing a mock page access which returns a specified number of books:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | A mock implementation of the book page access function.</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="co">--   The argument resultCount specifies the total number of books to return.</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ot">mockBookPageImpl ::</span> <span class="dt">Natural</span> <span class="ot">-&gt;</span> <span class="dt">PageAccess</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>mockBookPageImpl _ _ _ <span class="dv">0</span> <span class="ot">=</span> <span class="fu">error</span> <span class="st">&quot;pageId must be &gt;= 1&quot;</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>mockBookPageImpl resultCount _queryString pageSize pageId <span class="ot">=</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> (numFullPages, remainder) <span class="ot">=</span> resultCount <span class="ot">`quotRem`</span> pageSize</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>      numPages <span class="ot">=</span> <span class="kw">if</span> remainder <span class="op">==</span> <span class="dv">0</span> <span class="kw">then</span> numFullPages <span class="kw">else</span> numFullPages <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">in</span>  <span class="kw">if</span> pageId <span class="op">&lt;=</span> numFullPages</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>        <span class="kw">then</span> <span class="fu">return</span> <span class="op">$</span> <span class="dt">BookResp</span> (<span class="fu">replicate</span> (<span class="fu">fromIntegral</span> pageSize) sampleBook) resultCount</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">else</span> <span class="kw">if</span> remainder <span class="op">/=</span> <span class="dv">0</span> <span class="op">&amp;&amp;</span> pageId <span class="op">==</span> numPages</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>          <span class="kw">then</span> <span class="fu">return</span> <span class="op">$</span> <span class="dt">BookResp</span> (<span class="fu">replicate</span> (<span class="fu">fromIntegral</span> remainder) sampleBook) resultCount</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>          <span class="kw">else</span> <span class="fu">return</span> <span class="op">$</span> <span class="dt">BookResp</span> [] resultCount</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="ot">sampleBook ::</span> <span class="dt">Book</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>sampleBook <span class="ot">=</span> <span class="dt">Book</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>  { bkTitle <span class="ot">=</span> <span class="st">&quot;The Lord of the Rings&quot;</span>,</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>    bkAuthors <span class="ot">=</span> [<span class="st">&quot;J. R. R. Tolkien&quot;</span>],</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>    bkYear <span class="ot">=</span> <span class="dt">Just</span> <span class="dv">1954</span></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>  }</span></code></pre></div>
+<p>Now we can start to write unit tests for <code>searchBooks</code>:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">spec ::</span> <span class="dt">Spec</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>spec <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  describe <span class="st">&quot;Using a paging backend API as data input&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    it <span class="st">&quot;works for empty result&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> mockSearch <span class="ot">=</span> searchBooks (mockBookPageImpl <span class="dv">0</span>) <span class="dv">50</span> <span class="dv">10</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>      result <span class="ot">&lt;-</span> mockSearch <span class="st">&quot;Harry Potter&quot;</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>      <span class="fu">length</span> result <span class="ot">`shouldBe`</span> <span class="dv">0</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    it <span class="st">&quot;respects the max number of pages parameter&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> mockSearch <span class="ot">=</span> searchBooks (mockBookPageImpl <span class="dv">100</span>) <span class="dv">5</span> <span class="dv">10</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>      result <span class="ot">&lt;-</span> mockSearch <span class="st">&quot;Harry Potter&quot;</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>      <span class="fu">length</span> result <span class="ot">`shouldBe`</span> <span class="dv">50</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    it <span class="st">&quot;works correctly in the last page&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> mockSearch <span class="ot">=</span> searchBooks (mockBookPageImpl <span class="dv">49</span>) <span class="dv">5</span> <span class="dv">10</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>      result <span class="ot">&lt;-</span> mockSearch <span class="st">&quot;Harry Potter&quot;</span></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>      <span class="fu">length</span> result <span class="ot">`shouldBe`</span> <span class="dv">49</span></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    it <span class="st">&quot;can deal with arbitrary result sizes&quot;</span> <span class="op">$</span></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>      property <span class="op">$</span> \resultSize <span class="ot">-&gt;</span> <span class="kw">do</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> mockSearch <span class="ot">=</span> searchBooks (mockBookPageImpl resultSize) <span class="dv">5</span> <span class="dv">10</span></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>        result <span class="ot">&lt;-</span> mockSearch <span class="st">&quot;Harry Potter&quot;</span></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>        <span class="fu">length</span> result <span class="ot">`shouldBe`</span> <span class="fu">fromIntegral</span> (<span class="fu">min</span> resultSize <span class="dv">50</span>)</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>    it <span class="st">&quot;can deal with arbitrary page sizes&quot;</span> <span class="op">$</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>      property <span class="op">$</span> \ps <span class="ot">-&gt;</span> <span class="kw">do</span></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> pageSize <span class="ot">=</span> ps <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>            mockSearch <span class="ot">=</span> searchBooks (mockBookPageImpl <span class="dv">100</span>) pageSize <span class="dv">10</span></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>        result <span class="ot">&lt;-</span> mockSearch <span class="st">&quot;Harry Potter&quot;</span></span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>        <span class="fu">length</span> result <span class="ot">`shouldBe`</span> <span class="fu">fromIntegral</span> (<span class="fu">min</span> <span class="dv">100</span> (pageSize <span class="op">*</span> <span class="dv">10</span>))</span></code></pre></div>
+<p>which results in the following output:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">SearchBooks</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="ex">Using</span> a paging backend API as data input</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="ex">works</span> for empty result <span class="pp">[</span><span class="ss">✔</span><span class="pp">]</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">respects</span> the max number of pages parameter <span class="pp">[</span><span class="ss">✔</span><span class="pp">]</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="ex">works</span> correctly in the last page <span class="pp">[</span><span class="ss">✔</span><span class="pp">]</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="ex">can</span> deal with arbitrary result sizes <span class="pp">[</span><span class="ss">✔</span><span class="pp">]</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="ex">can</span> deal with arbitrary page sizes <span class="pp">[</span><span class="ss">✔</span><span class="pp">]</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>      <span class="ex">+++</span> OK, passed 100 tests.</span></code></pre></div>
+<p>So now we have a unit test suite for <code>searchBooks</code> which doesn’t depend on the real API. This was made possible by decoupling the page access function from <code>searchBooks</code>.</p>
+<h2 id="decoupling-and-clean-architecture">Decoupling and Clean Architecture</h2>
+<p>In order to illustrate the decoupling achieved by this refactoring, I have created a dependency graph of the modules involved. The arrows indicate the direction of the dependencies. The <code>searchBooks</code> function (in the <code>SearchUseCase</code> module) does only depend on the <code>PageAccess</code> type (in the <code>ApiModel</code> module) and of course on the <code>Book</code> type in the <code>DomainModel</code> module.</p>
+<p>The <code>Main</code> module takes the <code>getBookPage</code> function (from module <code>ApiAccess</code>) and passes it to the <code>searchBooks</code> function in order to work against the real API.
+<code>getBookPage</code> only depends on the <code>PageAccess</code> type.</p>
+<figure>
+<img src="../img/dependencies-with-functions.png" alt="dependencies" />
+<figcaption aria-hidden="true">dependencies</figcaption>
+</figure>
+<p>(Generated with <a href="https://hackage.haskell.org/package/graphmod">GraphMod</a>)</p>
+<p>This is exactly the kind of decoupling that the <a href="https://thma.github.io/posts/2020-05-29-polysemy-clean-architecture.html">clean architecture</a> advocates:</p>
+<blockquote>
+<p>The overriding rule that makes this architecture work is The Dependency Rule.
+This rule says that source code dependencies can only point inwards.
+Nothing in an inner circle can know anything at all about something in an outer circle.
+In particular, the name of something declared in an outer circle must not be mentioned by the code in the an inner circle.
+That includes, functions, classes. variables, or any other named software entity.</p>
+<p>Quoted from <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">Clean Architecture blog post</a></p>
+</blockquote>
+<figure>
+<img src="../img/clean-architecture-with-functions.png" alt="clean architecture" />
+<figcaption aria-hidden="true">clean architecture</figcaption>
+</figure>
+<p>I hope that this post has shown you that the clean architecture is not only applicable to large projects. Even in very small projects it can help to decouple business logic from infrastructure code and thus greatly improve testability.</p>
+<p>Luckily for us Haskell programmers, we don’t need to use any frameworks to achieve this decoupling. We can use higher order functions to achieve the same result.</p>
+]]></description>
+    <pubDate>Sat, 29 Jul 2023 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2023-07-29-clean-architecture-revisited.html</guid>
+    <dc:creator>Thomas Mahler</dc:creator>
+</item>
+<item>
     <title>Writing a Haskell persistence layer using Generics and Reflection</title>
     <link>https://thma.github.io//posts/2023-01-21-a-haskell-persistence-layer-using-generics-and-reflection.html</link>
     <description><![CDATA[<div class="info">
@@ -2661,37 +2922,6 @@ So a parallel MapReduce will still work correctly if the intermediate data struc
 ]]></description>
     <pubDate>Sat, 30 Jan 2021 00:00:00 UT</pubDate>
     <guid>https://thma.github.io//posts/2021-01-30-How-QuickCheck-destroyed-my-favourite-theory.html</guid>
-    <dc:creator>Thomas Mahler</dc:creator>
-</item>
-<item>
-    <title>What's awesome about functional programming</title>
-    <link>https://thma.github.io//posts/2021-01-17-Whats-awesome-about-functional-programming.html</link>
-    <description><![CDATA[<div class="info">
-    <em>Posted on January 17, 2021
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<p>Some weeks ago I gave an introductory talk on functional programming at an in-house mini-conference where I tried to explain basic concepts of functional programming to a crowd of developers with their backgrounds mostly in imperative and OO languages.</p>
-<p>Initially I had planned to present the contents of my <a href="https://thma.github.io/posts/2020-04-01-why-haskell-matters.html">Why Haskell Matters article</a> but that turned out impractical because of the time constraints of my talk.</p>
-<p>So I prepared a condensed slide deck focussing on the more elementary sections, which worked quite well.</p>
-<p>Recently I stumbled across <a href="https://github.com/gibiansky/IHaskell">IHaskell</a>, a Haskell kernel for the Jupyter Notebook platform. As I like the interactive approach of Jupyter notebooks quite a lot I transferred my presentation into the Jupyter notebook format.</p>
-<p>As I’m quite happy with the result I’d like to make it available to a wider audience. I have prepared three different versions:</p>
-<ol type="1">
-<li><p>The notebook as rendered by
-<a href="https://nbviewer.jupyter.org/github/thma/IHaskellExperiments/blob/main/WhatsAwesomeAboutFunctionalProgramming.ipynb">nbviewer.jupyter.org</a>.
-Unfortunately it’s not interactive. But you won’t need a local Jupyter installation.</p></li>
-<li><p>A <a href="/static/WhatsAwesomeAboutFunctionalProgramming.slides.html">reveal.js presentation</a> which I generated from the notebook. This version just needs a web-browser.</p></li>
-<li><p>An Interactive version of the reveal.js slides hosted on Binder: <a href="https://mybinder.org/v2/gh/thma/IHaskellExperiments/HEAD?filepath=ihaskell_examples/WhatsAwesomeAboutFunctionalProgramming.ipynb"><img src="https://mybinder.org/badge_logo.svg" alt="Binder" /></a>
-(Press ALT-r to start the presentation.) This version uses <a href="https://rise.readthedocs.io/en/stable/">RISE</a> to allow interactive notebook cells while still being in presentation mode.
-This version is based on a <a href="https://github.com/thma/IHaskellExperiments/blob/main/Dockerfile">Dockerfile</a> that adds the RISE extension to an <a href="https://hub.docker.com/r/crosscompass/ihaskell-notebook">ihaskell-notebook</a> docker image. This Dockerfile is then built and served by <a href="https://mybinder.org/">Binder</a>.</p></li>
-</ol>
-<p>If you intend to use IHaskell notebooks locally <a href="https://github.com/gibiansky/IHaskell#installation">Please follow this installation guide</a>.</p>
-<p>Sourcecode of my IHaskell notebook and the dockerfile are hosted in <a href="https://github.com/thma/IHaskellExperiments">this github repo</a>.</p>
-]]></description>
-    <pubDate>Sun, 17 Jan 2021 00:00:00 UT</pubDate>
-    <guid>https://thma.github.io//posts/2021-01-17-Whats-awesome-about-functional-programming.html</guid>
     <dc:creator>Thomas Mahler</dc:creator>
 </item>
 
