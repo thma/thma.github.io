@@ -11,9 +11,9 @@ tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, 
 
 ## Abstract
 
-In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper [Optimizing bracket abstraction](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov and closely follow [Ben Lynn's implementation of Kiselyov's ideas](https://crypto.stanford.edu/~blynn/lambda/kiselyov.html).
+In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper [λ to SKI, Semantically](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov and closely follow [Ben Lynn's implementation of Kiselyov's ideas](https://crypto.stanford.edu/~blynn/lambda/kiselyov.html).
 
-I will also give detailed comparisons of the different approaches regarding emitted code size and execution performance on different reducers.
+I will also give detailed comparisons of the different approaches regarding the size of the emitted code and execution performance on different reducers.
 
 ## Introduction
 

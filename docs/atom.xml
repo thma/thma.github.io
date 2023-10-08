@@ -25,8 +25,8 @@
 <p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a>
 <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
 <h2 id="abstract">Abstract</h2>
-<p>In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov and closely follow <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">Ben Lynn’s implementation of Kiselyov’s ideas</a>.</p>
-<p>I will also give detailed comparisons of the different approaches regarding emitted code size and execution performance on different reducers.</p>
+<p>In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">λ to SKI, Semantically</a> by Oleg Kiselyov and closely follow <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">Ben Lynn’s implementation of Kiselyov’s ideas</a>.</p>
+<p>I will also give detailed comparisons of the different approaches regarding the size of the emitted code and execution performance on different reducers.</p>
 <h2 id="introduction">Introduction</h2>
 <p>In previous blog posts I have shown how functional languages can be implemented using a small set of combinators.</p>
 <p><strong>The first post</strong>, <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">Implementing a functional language with Graph Reduction</a> described an approach that sets up three major components:</p>
