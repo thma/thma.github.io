@@ -1,7 +1,7 @@
 ---
 title: Optimizing bracket abstraction for Combinator Reduction
 author: Thomas Mahler
-tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, bracket abstraction, graph reduction, Y-combinator, recursion, graph-reduction, Haskell in Haskell
+tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, bracket abstraction, graph reduction, Y-combinator, recursion, graph-reduction, Haskell in Haskell, performance, optimization, bulk combinators, Kiselyov, Ben Lynn
 ---
 
 
@@ -11,13 +11,13 @@ tags: haskell, lambda-calculus, combinatory logic, cartesian closed categories, 
 
 ## Abstract
 
-In this post i will show how to significantly improve the performance of a combinator based interpreter by using an alternative abstraction algorithm. This algorithm is based on the paper [Optimizing bracket abstraction](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov and closely follows Ben Lynn's implementation of Kiselyov's algorithm in [his blog post](https://crypto.stanford.edu/~blynn/lambda/kiselyov.html).
+In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper [Optimizing bracket abstraction](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov and closely follow [Ben Lynn's implementation of Kiselyov's ideas](https://crypto.stanford.edu/~blynn/lambda/kiselyov.html).
 
-I will also give some performance comparisons between the different approaches.
+I will also give detailed comparisons of the different approaches regarding emitted code size and execution performance on different reducers.
 
 ## Introduction
 
-In previous blog posts i have shown how functional languages can be implemented using a small set of combinators. 
+In previous blog posts I have shown how functional languages can be implemented using a small set of combinators. 
 
 **The first post**, [Implementing a functional language with Graph Reduction](https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html) described an approach that sets up three major components:
 
@@ -37,7 +37,7 @@ Another significant finding was that the performance of functions with two or mo
 
 This is caused by the inefficient code generation of the classic bracket abstraction: [The output size grows quadratic](https://tromp.github.io/cl/LC.pdf) with internal complexity and number of variables. As each additional combinator or application will require additional execution time it’s easy to see why a quadratic growth in combinator code size will drastically decrease performance. There have been many attempts to optimize bracket abstraction by [introducing additional combinators](https://www.cantab.net/users/antoni.diller/brackets/intro.html) and by applying additional optimization rules.
 
-**In the present post** i will show how to significantly improve the performnce by using an alternative abstraction algorithm. This algorithm is based on the paper [Optimizing bracket abstraction](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov.
+**In the present post** I will show how to significantly improve the performnce by using an alternative abstraction algorithm. This algorithm is based on the paper [Optimizing bracket abstraction](https://okmij.org/ftp/tagless-final/ski.pdf) by Oleg Kiselyov.
 
 My implementation closely follows Ben Lynn's implementation of Kiselyov's algorithm in [his blog post](https://crypto.stanford.edu/~blynn/lambda/kiselyov.html). I have made only minor changes to make the code more readable and to make it work with the parser and compiler of the first post.
 

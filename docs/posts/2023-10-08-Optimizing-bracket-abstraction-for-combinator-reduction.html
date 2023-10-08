@@ -63,10 +63,10 @@
 <p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a>
 <a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
 <h2 id="abstract">Abstract</h2>
-<p>In this post i will show how to significantly improve the performance of a combinator based interpreter by using an alternative abstraction algorithm. This algorithm is based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov and closely follows Ben Lynn’s implementation of Kiselyov’s algorithm in <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">his blog post</a>.</p>
-<p>I will also give some performance comparisons between the different approaches.</p>
+<p>In this post I will show how to significantly improve the performance of combinator based reducers by using a alternative abstraction algorithms. These algorithms are based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov and closely follow <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">Ben Lynn’s implementation of Kiselyov’s ideas</a>.</p>
+<p>I will also give detailed comparisons of the different approaches regarding emitted code size and execution performance on different reducers.</p>
 <h2 id="introduction">Introduction</h2>
-<p>In previous blog posts i have shown how functional languages can be implemented using a small set of combinators.</p>
+<p>In previous blog posts I have shown how functional languages can be implemented using a small set of combinators.</p>
 <p><strong>The first post</strong>, <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">Implementing a functional language with Graph Reduction</a> described an approach that sets up three major components:</p>
 <ul>
 <li><p>A parser for a tiny functional language based on the untyped λ-calculus.</p></li>
@@ -78,7 +78,7 @@
 <p>I also did some performance measurements and found that the version using native Haskell functions is about 10-100 times faster than the graph reduction engine.</p>
 <p>Another significant finding was that the performance of functions with two or more arguments was significantly worse than the performance of functions with one argument.</p>
 <p>This is caused by the inefficient code generation of the classic bracket abstraction: <a href="https://tromp.github.io/cl/LC.pdf">The output size grows quadratic</a> with internal complexity and number of variables. As each additional combinator or application will require additional execution time it’s easy to see why a quadratic growth in combinator code size will drastically decrease performance. There have been many attempts to optimize bracket abstraction by <a href="https://www.cantab.net/users/antoni.diller/brackets/intro.html">introducing additional combinators</a> and by applying additional optimization rules.</p>
-<p><strong>In the present post</strong> i will show how to significantly improve the performnce by using an alternative abstraction algorithm. This algorithm is based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov.</p>
+<p><strong>In the present post</strong> I will show how to significantly improve the performnce by using an alternative abstraction algorithm. This algorithm is based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov.</p>
 <p>My implementation closely follows Ben Lynn’s implementation of Kiselyov’s algorithm in <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">his blog post</a>. I have made only minor changes to make the code more readable and to make it work with the parser and compiler of the first post.</p>
 <h2 id="from-λ-calculus-to-combinators">From λ-calculus to combinators</h2>
 <p>My parser can parse programs of a very rudimentary language that is basically just pure λ-calculus plus integers. Here is an example:</p>
