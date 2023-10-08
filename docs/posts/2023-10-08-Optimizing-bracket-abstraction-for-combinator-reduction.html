@@ -1,0 +1,941 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>lambda is not a four letter word - Optimizing bracket abstraction for Combinator Reduction</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- MATH JAX-->
+    <script type="text/javascript" src="../static/mathjax/tex-mml-chtml.js"></script>
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+</head>
+<body>
+
+<header>
+    <div class="heading">
+        <div class="logo">
+            <div style="float: left">
+                <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+            </div>
+            <div>
+                <a href="../">&nbsp;lambda is not a four letter word</a>
+            </div>
+        </div>
+        <nav>
+            <a href="../">home</a> | <a href="../about.html">about</a> | <a href="https://github.com/thma"><img valign="middle" src="../img/GitHub-Mark-32px.png" height="20px" alt="GitHub"></a>
+        </nav>
+    </div>
+</header>
+
+<main class="markdown-body" role="main">
+    <h1>Optimizing bracket abstraction for Combinator Reduction</h1>
+    <div class="info">
+    <em>Posted on October  8, 2023
+    
+        by Thomas Mahler
+    </em><br /><br />
+</div>
+
+<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a>
+<a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
+<h2 id="abstract">Abstract</h2>
+<p>In this post i will show how to significantly improve the performance of a combinator based interpreter by using an alternative abstraction algorithm. This algorithm is based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov and closely follows Ben Lynn’s implementation of Kiselyov’s algorithm in <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">his blog post</a>.</p>
+<p>I will also give some performance comparisons between the different approaches.</p>
+<h2 id="introduction">Introduction</h2>
+<p>In previous blog posts i have shown how functional languages can be implemented using a small set of combinators.</p>
+<p><strong>The first post</strong>, <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">Implementing a functional language with Graph Reduction</a> described an approach that sets up three major components:</p>
+<ul>
+<li><p>A parser for a tiny functional language based on the untyped λ-calculus.</p></li>
+<li><p>A compiler from λ-calculus to a fixed set of combinatory logic combinators (S,K,I,B,C and Y (aka. SICKBY)). This compiler uses traditional bracket abstraction algorithms to encode λ-terms as combinators.</p></li>
+<li><p>A graph-reduction engine which implements the combinator rewrite rules as an efficient graph reduction</p></li>
+</ul>
+<p><strong>In the second post</strong>, <a href="https://thma.github.io/posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html">Evaluating SKI combinators as native Haskell functions</a>, I showed how the combinators can be implemented as native Haskell functions. This allows to evaluate the combinators directly in Haskell without the need for a graph reduction engine.</p>
+<p>The parser and the compiler of the first post could be reused without any changes. I just had to plug in a different execution engine. This time based on native Haskell functions instead of graph reduction.</p>
+<p>I also did some performance measurements and found that the version using native Haskell functions is about 10-100 times faster than the graph reduction engine.</p>
+<p>Another significant finding was that the performance of functions with two or more arguments was significantly worse than the performance of functions with one argument.</p>
+<p>This is caused by the inefficient code generation of the classic bracket abstraction: <a href="https://tromp.github.io/cl/LC.pdf">The output size grows quadratic</a> with internal complexity and number of variables. As each additional combinator or application will require additional execution time it’s easy to see why a quadratic growth in combinator code size will drastically decrease performance. There have been many attempts to optimize bracket abstraction by <a href="https://www.cantab.net/users/antoni.diller/brackets/intro.html">introducing additional combinators</a> and by applying additional optimization rules.</p>
+<p><strong>In the present post</strong> i will show how to significantly improve the performnce by using an alternative abstraction algorithm. This algorithm is based on the paper <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Optimizing bracket abstraction</a> by Oleg Kiselyov.</p>
+<p>My implementation closely follows Ben Lynn’s implementation of Kiselyov’s algorithm in <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">his blog post</a>. I have made only minor changes to make the code more readable and to make it work with the parser and compiler of the first post.</p>
+<h2 id="from-λ-calculus-to-combinators">From λ-calculus to combinators</h2>
+<p>My parser can parse programs of a very rudimentary language that is basically just pure λ-calculus plus integers. Here is an example:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>sqr  <span class="ot">=</span> λx<span class="op">.</span> <span class="op">*</span> x x</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> sqr <span class="dv">3</span></span></code></pre></div>
+<p>The parser will produce an environment of top-level definitions from this program:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>[(<span class="st">&quot;sqr&quot;</span>,<span class="dt">Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> <span class="st">&quot;*&quot;</span>) (<span class="dt">Var</span> <span class="st">&quot;x&quot;</span>)) (<span class="dt">Var</span> <span class="st">&quot;x&quot;</span>))), </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a> (<span class="st">&quot;main&quot;</span>,<span class="dt">App</span> (<span class="dt">Var</span> <span class="st">&quot;sqr&quot;</span>) (<span class="dt">Int</span> <span class="dv">3</span>))]</span></code></pre></div>
+<p>Data types for λ-expressions and the environment are defined as follows:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Expr</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> <span class="dt">App</span> <span class="dt">Expr</span> <span class="dt">Expr</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Var</span> <span class="dt">String</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Int</span> <span class="dt">Integer</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lam</span> <span class="dt">String</span> <span class="dt">Expr</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Environment</span> <span class="ot">=</span> [(<span class="dt">String</span>, <span class="dt">Expr</span>)]</span></code></pre></div>
+<p>Now we can define a compiler that translates such λ-expressions to combinator terms.
+(You will find the complete code in <a href="https://github.com/thma/lambda-ski/blob/main/src/Kiselyov.hs">Kiselyov.hs</a></p>
+<p>Our journey begins by translating λ-expressions to a data type <code>DB</code> which is quite similar to the λ-calculus terms but uses indices instead of variable names. This is done by the function <code>deBruijn</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Peano</span> <span class="ot">=</span> <span class="dt">Succ</span> <span class="dt">Peano</span> <span class="op">|</span> <span class="dt">Zero</span> <span class="kw">deriving</span> <span class="dt">Show</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">DB</span> <span class="ot">=</span> <span class="dt">N</span> <span class="dt">Peano</span> <span class="op">|</span> <span class="dt">L</span> <span class="dt">DB</span> <span class="op">|</span> <span class="dt">A</span> <span class="dt">DB</span> <span class="dt">DB</span> <span class="op">|</span> <span class="dt">Free</span> <span class="dt">String</span> <span class="op">|</span> <span class="dt">IN</span> <span class="dt">Integer</span> <span class="kw">deriving</span> <span class="dt">Show</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ot">deBruijn ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">DB</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>deBruijn <span class="ot">=</span> go [] <span class="kw">where</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  go binds <span class="ot">=</span> \<span class="kw">case</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Var</span> x <span class="ot">-&gt;</span> <span class="fu">maybe</span> (<span class="dt">Free</span> x) <span class="dt">N</span> <span class="op">$</span> <span class="fu">index</span> x binds</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Lam</span> x t <span class="ot">-&gt;</span> <span class="dt">L</span> <span class="op">$</span> go (x<span class="op">:</span>binds) t</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="dt">App</span> t u <span class="ot">-&gt;</span> <span class="dt">A</span> (go binds t) (go binds u)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Int</span> i <span class="ot">-&gt;</span> <span class="dt">IN</span> i  </span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="fu">index</span><span class="ot"> ::</span> <span class="dt">Eq</span> a <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> [a] <span class="ot">-&gt;</span> <span class="dt">Maybe</span> <span class="dt">Peano</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="fu">index</span> x xs <span class="ot">=</span> <span class="fu">lookup</span> x <span class="op">$</span> <span class="fu">zip</span> xs <span class="op">$</span> <span class="fu">iterate</span> <span class="dt">Succ</span> <span class="dt">Zero</span>    </span></code></pre></div>
+<p>Lets see how this works on a simple <code>main</code> functions:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> source <span class="ot">=</span> <span class="st">&quot;main = λx y. * x y&quot;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> env <span class="ot">=</span> parseEnvironment source</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;The parsed environment of named lambda expressions:&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> <span class="fu">print</span> env</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;The main expression in de Bruijn notation:&quot;</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> (<span class="fu">print</span> <span class="op">.</span> Data.Bifunctor.second deBruijn) env</span></code></pre></div>
+<p>This will produce the following output:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="dt">The</span> parsed environment <span class="kw">of</span> named lambda expressions<span class="op">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>,<span class="dt">Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">Lam</span> <span class="st">&quot;y&quot;</span> (<span class="dt">App</span> (<span class="dt">App</span> (<span class="dt">Var</span> <span class="st">&quot;*&quot;</span>) (<span class="dt">Var</span> <span class="st">&quot;x&quot;</span>)) (<span class="dt">Var</span> <span class="st">&quot;y&quot;</span>))))</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="dt">The</span> main expression <span class="kw">in</span> de <span class="dt">Bruijn</span> notation<span class="op">:</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>,<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;*&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">N</span> <span class="dt">Zero</span>))))</span></code></pre></div>
+<p>It’s easy to see that the de Bruijn notation is just a different representation of the λ-term. The only difference is that the variable names are replaced by indices.
+The innermost lambda-abstraction binds the variable <code>y</code> which is represented by the index <code>Zero</code>. The next lambda-abstraction binds the variable <code>x</code> which is represented by the index <code>Succ Zero</code>.
+This notation is quite helpful as it allows to systematically adress variables by their respective position in a complex term.</p>
+<p>But why are we using Peano numbers for the indices? Why not just use integers?
+Well it’s definitely possible to <a href="https://crypto.stanford.edu/~blynn/lambda/cl.html">use integers as indices</a>.
+But there is a good reason to use Peano numbers in our case:
+In the subsequent compilation steps we want to be able to do pattern matching on the indices. This is possible with Peano numbers, because they are defined as an algebraic data type:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Peano</span> <span class="ot">=</span> <span class="dt">Succ</span> <span class="dt">Peano</span> <span class="op">|</span> <span class="dt">Zero</span></span></code></pre></div>
+<p>Starting with the de Bruijn notation Ben Lynn’s implementation of Kiselyov’s algorithm builds up a series of six increasingly optimized compilers that translate λ-expressions to combinator terms:</p>
+<ul>
+<li>a plain compiler without any optimizations (<code>compilePlain</code>)</li>
+<li>a compiler that implements K-optimization (<code>compileK</code>)</li>
+<li>a compiler that implements K- and Eta-optimization (<code>compileEta</code>)</li>
+<li>a compiler that generates code with <em>Bulk Combinators</em> (<code>compileBulk</code>)</li>
+<li>a compiler that eliminates <em>Bulk Combinators</em> with linear size(<code>compileBulkLinear</code>)</li>
+<li>a compiler that eliminates <em>Bulk Combinators</em> with logarithmic size(<code>compileBulkLog</code>)</li>
+</ul>
+<p>I’ll don’t want to go into all the details of the algorithms. <a href="https://crypto.stanford.edu/~blynn/lambda/kiselyov.html">Ben’s blog post</a> is a great resource for this. I’ll just give a brief overview of the compilation outputs of the different compilers. And then I’ll focus on performance comparisons between the different approaches.
+I will use <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI.hs">my original compiler</a> <code>compileBracket</code> based on the classic (recursively optimized) bracket abstraction as a baseline for the performance comparisons.</p>
+<h3 id="the-simple-main-example">The simple <code>main</code> example</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> λx y<span class="op">.</span> <span class="op">*</span> x y</span></code></pre></div>
+<table>
+<thead>
+<tr class="header">
+<th>Compiler</th>
+<th>Output</th>
+<th>Code Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compileBracket</code></td>
+<td><code>MUL</code></td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td><code>compilePlain</code></td>
+<td><code>R I(B S(B(B MUL)(B K I)))</code></td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<td><code>compileK</code></td>
+<td><code>R I(B B(B MUL I)))</code></td>
+<td>7</td>
+</tr>
+<tr class="even">
+<td><code>compileEta</code></td>
+<td><code>MUL</code></td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulk</code></td>
+<td><code>MUL</code></td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td><code>compileBulkLinear</code></td>
+<td><code>MUL</code></td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulkLog</code></td>
+<td><code>MUL</code></td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>From this simple example it’s obvious that <code>compilePlain</code> and <code>compileK</code> generate a lot of redundant code. All the other compilers generate the same output as the baseline.</p>
+<p>In order to have a simple metric for quality of the code generation I am showing the code size of the generated code for each compiler. The code size is measured in the number of emitted combinators. The <code>codeSize</code> function is defined as follows:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ot">codeSize ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>codeSize (<span class="dt">Com</span> _) <span class="ot">=</span> <span class="dv">1</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>codeSize (<span class="dt">INT</span> _) <span class="ot">=</span> <span class="dv">0</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>codeSize (t <span class="op">:@</span> u) <span class="ot">=</span> codeSize t <span class="op">+</span> codeSize u</span></code></pre></div>
+<p>Please also note that the Kiselyov algorithms may emit code for an additional <code>R</code> combinator with the following reduction rule:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="dt">R</span> f g x <span class="ot">=</span> g x f  </span></code></pre></div>
+<h3 id="the-factorial-function">The factorial function</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>fact <span class="ot">=</span> y(λf n<span class="op">.</span> <span class="kw">if</span> (is0 n) <span class="dv">1</span> (<span class="op">*</span> n (f (sub1 n))))</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> fact <span class="dv">100</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- in de Bruijn Notation</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;fact&quot;</span>, <span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;is0&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))) (<span class="dt">IN</span> <span class="dv">1</span>)) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;*&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))))))))</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>, <span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;fact&quot;</span>) (<span class="dt">IN</span> <span class="dv">100</span>))</span></code></pre></div>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Compiler</th>
+<th>Output</th>
+<th>Code Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compileBracket</code></td>
+<td><code>Y(B' S(C' IF ZEROP 1)(B' S MUL(C' S K SUB1))) 100</code></td>
+<td>13</td>
+</tr>
+<tr class="even">
+<td><code>compilePlain</code></td>
+<td><code>Y(B(S(R 1(B IF(B ZEROP I))))(B(S(B MUL I))(R(B SUB1 I)(B S(B K I))))) 100</code></td>
+<td>23</td>
+</tr>
+<tr class="odd">
+<td><code>compileK</code></td>
+<td><code>Y(B(S(C(B IF(B ZEROP I)) 1))(B(S(B MUL I))(R(B SUB1 I)(B B I)))) 100</code></td>
+<td>21</td>
+</tr>
+<tr class="even">
+<td><code>compileEta</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(R SUB1 B))) 100</code></td>
+<td>13</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulk</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
+<td>14</td>
+</tr>
+<tr class="even">
+<td><code>compileBulkLinear</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
+<td>14</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulkLog</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
+<td>14</td>
+</tr>
+</tbody>
+</table>
+<p>What’s interesting here is that only <code>compileEta</code> produces code of the same size as the baseline. All others produce code that uses at least one more combinator. Again <code>compilePlain</code> and <code>compileK</code> generate the largest code sizes.</p>
+<h3 id="the-fibonacci-function">The fibonacci function</h3>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>fib  <span class="ot">=</span> y(λf n<span class="op">.</span> <span class="kw">if</span> (is0 n) <span class="dv">1</span> (<span class="kw">if</span> (eql n <span class="dv">1</span>) <span class="dv">1</span> (<span class="op">+</span> (f (sub1 n)) (f (sub n <span class="dv">2</span>)))))</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> fib <span class="dv">10</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- in de Bruijn notation</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;fib&quot;</span>, <span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;is0&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))) (<span class="dt">IN</span> <span class="dv">1</span>)) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;eql&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">IN</span> <span class="dv">1</span>))) (<span class="dt">IN</span> <span class="dv">1</span>)) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;+&quot;</span>) (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">IN</span> <span class="dv">2</span>)))))))))</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>, <span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;fib&quot;</span>) (<span class="dt">IN</span> <span class="dv">10</span>))</span></code></pre></div>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Compiler</th>
+<th>Output</th>
+<th>Code Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compileBracket</code></td>
+<td><code>Y(B' S(C' IF ZEROP 1)(B' S(C' IF(C EQL 1) 1)(S' S(B' S(K ADD)(C' S K SUB1))(C' S K(C SUB 2))))) 10</code></td>
+<td>27</td>
+</tr>
+<tr class="even">
+<td><code>compilePlain</code></td>
+<td><code>Y(B(S(R 1(B IF(B ZEROP I))))(B(S(R 1(B IF(R 1(B EQL I)))))(S(B S(B(B ADD)(R(B SUB1 I)(B S(B K I)))))(R(R 2(B SUB I))(B S(B K I)))))) 10</code></td>
+<td>43</td>
+</tr>
+<tr class="odd">
+<td><code>compileK</code></td>
+<td><code>Y(B(S(C(B IF(B ZEROP I)) 1))(B(S(C(B IF(C(B EQL I) 1)) 1))(S(B S(B(B ADD)(R(B SUB1 I)(B B I))))(R(C(B SUB I) 2)(B B I))))) 10</code></td>
+<td>39</td>
+</tr>
+<tr class="even">
+<td><code>compileEta</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S(B S(B(B ADD)(R SUB1 B)))(R(C SUB 2) B)))) 10</code></td>
+<td>27</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulk</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S2(B2 ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
+<td>26</td>
+</tr>
+<tr class="even">
+<td><code>compileBulkLinear</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(B(B S) B S(B B B ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
+<td>32</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulkLog</code></td>
+<td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S B I(B(B S) B) I(S B I B ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
+<td>36</td>
+</tr>
+</tbody>
+</table>
+<p>Here we see that <code>compileEta</code> produce code of the same size as the baseline. <code>compileBulk</code> generates code with one less combinator.</p>
+<p>Please also note that <code>compileBulk</code> now emits code for additional bulk combinators <code>S2</code> and <code>B2</code>. I’ll come back to the semantics of these later.</p>
+<h3 id="the-ackermann-function">The ackermann function</h3>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>ack  <span class="ot">=</span> y(λf n m<span class="op">.</span> <span class="kw">if</span> (is0 n) (<span class="op">+</span> m <span class="dv">1</span>) (<span class="kw">if</span> (is0 m) (f (sub1 n) <span class="dv">1</span>) (f (sub1 n) (f n (sub1 m)))))</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> ack <span class="dv">2</span> <span class="dv">2</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- in de Bruijn notation</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;ack&quot;</span>, <span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;is0&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;+&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">IN</span> <span class="dv">1</span>))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;is0&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">IN</span> <span class="dv">1</span>))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))))))))))</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>, <span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;ack&quot;</span>) (<span class="dt">IN</span> <span class="dv">2</span>)) (<span class="dt">IN</span> <span class="dv">2</span>))</span></code></pre></div>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Compiler</th>
+<th>Output</th>
+<th>Code Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compileBracket</code></td>
+<td><code>Y(B' S(B S(C'(B S K)(B IF ZEROP)(C ADD 1)))(S'(B S(S(K S)))(B' S(K(S(B IF ZEROP)))(B' S(K K)(C' S(C' S K SUB1)(K 1))))(S'(B S(S(K(B S K))))(C' S K SUB1)(C' S(S(K(B S K)))(K SUB1))))) 2 2</code></td>
+<td>59</td>
+</tr>
+<tr class="even">
+<td><code>compilePlain</code></td>
+<td><code>Y(B(S(B S(R(R 1(B ADD I))(B S(B(B IF)(B(B ZEROP)(B K I)))))))(S(B S(B(B S)(B(B(S(B IF(B ZEROP I))))(B(B(R 1))(R(B(B SUB1)(B K I))(B S(B(B S)(B(B K)(B K I)))))))))(S(B S(B(B S)(R(B(B SUB1)(B K I))(B S(B(B S)(B(B K)(B K I)))))))(B(R(B SUB1 I))(B(B S)(R(B K I)(B S(B(B S)(B(B K)(B K I)))))))))) 2 2</code></td>
+<td>103</td>
+</tr>
+<tr class="odd">
+<td><code>compileK</code></td>
+<td><code>Y(B(S(B S(R(C(B ADD I) 1)(B B(B IF(B ZEROP I))))))(S(B S(B(B S)(B(B(C(B IF(B ZEROP I))))(B(R 1)(R(B SUB1 I)(B B I))))))(S(B S(B(B B)(R(B SUB1 I)(B B I))))(B(R(B SUB1 I))(B(B B)(R I(B B I))))))) 2 2</code></td>
+<td>66</td>
+</tr>
+<tr class="even">
+<td><code>compileEta</code></td>
+<td><code>Y(B(S(B S(R(C ADD 1)(B B(B IF ZEROP)))))(S(B S(B(B S)(B(B(C(B IF ZEROP)))(B(R 1)(R SUB1 B)))))(S(B S(B(B B)(R SUB1 B)))(B(R SUB1)(B B))))) 2 2</code></td>
+<td>44</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulk</code></td>
+<td><code>Y(B(S2(C C(C ADD 1)(B B(B IF ZEROP))))(S3(B2(C(B IF ZEROP))(C C2 1(C C SUB1 B)))(S2(B2 B(C C SUB1 B))(C C2 SUB1(B B))))) 2 2</code></td>
+<td>36</td>
+</tr>
+<tr class="even">
+<td><code>compileBulkLinear</code></td>
+<td><code>Y(B(B(B S) B S(C C(C ADD 1)(B B(B IF ZEROP))))(B(B S) B(B(B S) B S)(B B B(C(B IF ZEROP))(C(B(B C) B C) 1(C C SUB1 B)))(B(B S) B S(B B B B(C C SUB1 B))(C(B(B C) B C) SUB1(B B))))) 2 2</code></td>
+<td>64</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulkLog</code></td>
+<td><code>Y(B(S B I(B(B S) B) I(C C(C ADD 1)(B B(B IF ZEROP))))(B(B(B(B S) B))(S B I)(B(B S) B) I(S B I B(C(B IF ZEROP))(C(S B I(B(B C) B) I) 1(C C SUB1 B)))(S B I(B(B S) B) I(S B I B B(C C SUB1 B))(C(S B I(B(B C) B) I) SUB1(B B))))) 2 2</code></td>
+<td>83</td>
+</tr>
+</tbody>
+</table>
+<p>As mentioned in my last post the output size of braxcket abstraction grows quadratic with the number of variables.
+In this case with three variables the output size for the bracket abstraction is already significantly larger than for
+the previous example with two variables.</p>
+<p>Now the Kiselyov algorithms really start to shine. <code>compileEta</code> produces code is significantly smaller as the baseline. And <code>compileBulk</code> output is even smaller.</p>
+<h3 id="the-tak-function">The tak function</h3>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>tak  <span class="ot">=</span> y(λf x y z<span class="op">.</span> (<span class="kw">if</span> (geq y x) z (f (f (sub1 x) y z) (f (sub1 y) z x) (f (sub1 z) x y ))))</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> tak <span class="dv">7</span> <span class="dv">4</span> <span class="dv">2</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- in de Bruijn notation</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;tak&quot;</span>,<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;y&quot;</span>) (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">L</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;if&quot;</span>) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;geq&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))))) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))))) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))) (<span class="dt">N</span> <span class="dt">Zero</span>))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">N</span> <span class="dt">Zero</span>)) (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))))) (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;sub1&quot;</span>) (<span class="dt">N</span> <span class="dt">Zero</span>))) (<span class="dt">N</span> (<span class="dt">Succ</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>)))) (<span class="dt">N</span> (<span class="dt">Succ</span> <span class="dt">Zero</span>))))))))))</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>,<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">A</span> (<span class="dt">Free</span> <span class="st">&quot;tak&quot;</span>) (<span class="dt">IN</span> <span class="dv">7</span>)) (<span class="dt">IN</span> <span class="dv">4</span>)) (<span class="dt">IN</span> <span class="dv">2</span>))</span></code></pre></div>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Compiler</th>
+<th>Output</th>
+<th>Code Size</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>compileBracket</code></td>
+<td><code>Y(B' S(B'(S(K S))(S(K S))(B' S(K IF)(B' S GEQ K)))(S'(B S(S(K(B S(S(K S))))))(S'(B S(S(K(B S(S(K S))))))(S'(B'(S(K(B'(S(K S)) K S))) K S) K(C' S K SUB1))(C'(B'(S(K(B S K))) S(S(K S)))(C' S K SUB1)(B K K)))(C'(B S(S(K(B'(S(K S)) K S))))(C'(B'(S(K S)) K S)(C' S K SUB1) K)(K K)))) 7 4 2</code></td>
+<td>98</td>
+</tr>
+<tr class="even">
+<td><code>compilePlain</code></td>
+<td><code>Y(B(S(B S(B(B S)(B(R I)(B(B S)(B(B(B IF))(B(S(B S(B(B GEQ)(B K I))))(B(B K)(B K I)))))))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))(B(B(R I))(B(B(B S))(B(R(B K I))(B(B S)(B(B(B S))(R(B(B(B SUB1))(B(B K)(B K I)))(B S(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))))))))))))(R(B(B K)(B K I))(B S(B(B S)(B(B(B S))(B(B(R I))(B(B(B S))(B(R(B(B SUB1)(B K I)))(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))))))))))))(B(R(B K I))(B(B S)(B(B(B S))(R(B(B K)(B K I))(B S(B(B S)(B(B(B S))(B(B(R(B SUB1 I)))(B(B(B S))(B(B(B K))(B(B K)(B K I)))))))))))))) 7 4 2</code></td>
+<td>221</td>
+</tr>
+<tr class="odd">
+<td><code>compileK</code></td>
+<td><code>Y(B(S(B S(B(B S)(B(R I)(B(B B)(B(B IF)(B(C(B GEQ I)) I)))))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B(B B I)))(B(B(R I))(B(B(B B))(B(R I)(B(B B)(R(B SUB1 I)(B B I))))))))))(R I(B B(B C(B(B C)(B(R I)(B(B B)(R(B SUB1 I)(B B I))))))))))))(B(R I)(B(B B)(B(B C)(R I(B B(B C(R(B SUB1 I)(B B I)))))))))) 7 4 2</code></td>
+<td>116</td>
+</tr>
+<tr class="even">
+<td><code>compileEta</code></td>
+<td><code>Y(B(S(B S(B(B S)(B(B IF)(C GEQ)))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B B))(R SUB1 B)))))(B C(B(B C)(R SUB1 B)))))))(B(B C)(B C(R SUB1 B))))) 7 4 2</code></td>
+<td>58</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulk</code></td>
+<td><code>Y(B(S3(B2 IF(C GEQ)))(S4(S4(S B3(C C SUB1 B))(B C2(C C SUB1 B)))(B2 C(B C(C C SUB1 B))))) 7 4 2</code></td>
+<td>29</td>
+</tr>
+<tr class="even">
+<td><code>compileBulkLinear</code></td>
+<td><code>Y(B(B(B S) B(B(B S) B S)(B B B IF(C GEQ)))(B(B S) B(B(B S) B(B(B S) B S))(B(B S) B(B(B S) B(B(B S) B S))(S(B B(B B B))(C C SUB1 B))(B(B(B C) B C)(C C SUB1 B)))(B B B C(B C(C C SUB1 B))))) 7 4 2</code></td>
+<td>73</td>
+</tr>
+<tr class="odd">
+<td><code>compileBulkLog</code></td>
+<td><code>Y(B(B(B(B(B S) B))(S B I)(B(B S) B) I(S B I B IF(C GEQ)))(S B I(S B I(B(B S) B)) I(S B I(S B I(B(B S) B)) I(S(B(B B)(S B I) B)(C C SUB1 B))(B(S B I(B(B C) B) I)(C C SUB1 B)))(S B I B C(B C(C C SUB1 B))))) 7 4 2</code></td>
+<td>81</td>
+</tr>
+</tbody>
+</table>
+<p>In this example with four variables the trend continues. <code>compileEta</code> produces code is significantly smaller as the baseline. And <code>compileBulk</code> output now is only about 1/3 of the baseline.</p>
+<h2 id="executing-bulk-combinators">Executing Bulk Combinators</h2>
+<p>We have seen that Kisekyov’s algorithms produce code that makes use of <em>Bulk Combinators</em> like <code>S4</code>, <code>B3</code> or <code>C2</code>. Ben Lynn defines the semantics of these combinators as follows:</p>
+<p><img style="align:center;" src="https://latex.codecogs.com/svg.image?\begin{align*}B_{n&plus;1}&=B'B_n\\C_{n&plus;1}&=C'C_n\\S_{n&plus;1}&=S'S_n\end{align*}" /></p>
+<p>where <code>B'</code>, <code>C'</code> and <code>S'</code> defined as follows:</p>
+<p><img style="align:center;" src="https://latex.codecogs.com/svg.image?\begin{align*}B'&=BB\\C'&=B(BC)B\\S'&=B(BS)B\end{align*}" /></p>
+<p>Ben also defines the following function that converts a combinator term with <em>Bulk Combinators</em> to a combinator term with only standard combinators:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ot">breakBulkLinear ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">CL</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>breakBulkLinear <span class="dt">B</span> n <span class="ot">=</span> <span class="fu">iterate</span> (comB' <span class="op">:@</span>) (<span class="dt">Com</span> <span class="dt">B</span>) <span class="op">!!</span> (n <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>breakBulkLinear <span class="dt">C</span> n <span class="ot">=</span> <span class="fu">iterate</span> (comC' <span class="op">:@</span>) (<span class="dt">Com</span> <span class="dt">C</span>) <span class="op">!!</span> (n <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>breakBulkLinear <span class="dt">S</span> n <span class="ot">=</span> <span class="fu">iterate</span> (comS' <span class="op">:@</span>) (<span class="dt">Com</span> <span class="dt">S</span>) <span class="op">!!</span> (n <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="ot">comB' ::</span> <span class="dt">CL</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>comB' <span class="ot">=</span> <span class="dt">Com</span> <span class="dt">B</span><span class="op">:@</span> <span class="dt">Com</span> <span class="dt">B</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="ot">comC' ::</span> <span class="dt">CL</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>comC' <span class="ot">=</span> <span class="dt">Com</span> <span class="dt">B</span> <span class="op">:@</span> (<span class="dt">Com</span> <span class="dt">B</span> <span class="op">:@</span> <span class="dt">Com</span> <span class="dt">C</span>) <span class="op">:@</span> <span class="dt">Com</span> <span class="dt">B</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="ot">comS' ::</span> <span class="dt">CL</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>comS' <span class="ot">=</span> <span class="dt">Com</span> <span class="dt">B</span> <span class="op">:@</span> (<span class="dt">Com</span> <span class="dt">B</span> <span class="op">:@</span> <span class="dt">Com</span> <span class="dt">S</span>) <span class="op">:@</span> <span class="dt">Com</span> <span class="dt">B</span></span></code></pre></div>
+<p>As we have seen in the output of the <code>compileBulkLinear</code> this conversion expands the code size. To avoid this expansion of the combinator code I have implemented a solution to directly execute <em>Bulk Combinators</em> without any prior code expansion.</p>
+<p>At the moment I have only implemented this idea in the <a href="https://wiki.haskell.org/wikiupload/0/0a/TMR-Issue10.pdf">Haskell-In-Haskell</a> inspired HHI-Reducer. Implementing it for the Graph Reduction Engine is left as an exercise for the reader ;-).</p>
+<p>In order to understand the solution we’ll have a short recap of the HHI-Reducer core ideas <a href="https://thma.github.io/posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html">as described in my last post</a>:</p>
+<p>The core idea is to take a combinator term and compile it into a set of Haskell functions. This is done in a function <code>link</code> as follows:</p>
+<ol type="1">
+<li><p>All combinators of the form <code>(CComb comb)</code> are mapped to haskell functions implementing the respective combinator reduction rule. For example the combinator <code>I</code> is mapped to <code>CFun id</code> and the combinator <code>K</code> is mapped to <code>CFun (CFun . const)</code>.</p></li>
+<li><p>All applications <code>(CApp fun arg)</code> have to be replaced by actual function application. In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that are wrapped by a <code>CFun</code> constructor. For this particular case we define an application operator <code>(!)</code> as follows:</p></li>
+</ol>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">infixl</span> <span class="dv">0</span> <span class="op">!</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ot">(!) ::</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>(<span class="dt">CFun</span> f) <span class="op">!</span> x <span class="ot">=</span> f x</span></code></pre></div>
+<p>Thus:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>(<span class="dt">Cfun</span> <span class="fu">id</span>) <span class="op">!</span> <span class="dv">14</span> <span class="ot">=</span> <span class="fu">id</span> <span class="dv">14</span> </span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>         <span class="fu">id</span> <span class="dv">14</span> <span class="ot">=</span> <span class="dv">14</span></span></code></pre></div>
+<p>The mapping of Combinators to Haskell functions in step 1. is done by looking up a map of combinator definitions. This map contains definitions for all standard combinators and numeric operations. The Bulk combinators are not defined in this map. Instead they are resolved by the function <code>resolveBulk</code>:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ot">resolveBulk ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>resolveBulk (<span class="dt">BulkCom</span> <span class="st">&quot;B&quot;</span> n) <span class="ot">=</span> <span class="fu">iterate</span> (comB' <span class="op">!</span>) comB <span class="op">!!</span> (n<span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>resolveBulk (<span class="dt">BulkCom</span> <span class="st">&quot;C&quot;</span> n) <span class="ot">=</span> <span class="fu">iterate</span> (comC' <span class="op">!</span>) comC <span class="op">!!</span> (n<span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>resolveBulk (<span class="dt">BulkCom</span> <span class="st">&quot;S&quot;</span> n) <span class="ot">=</span> <span class="fu">iterate</span> (comS' <span class="op">!</span>) comS <span class="op">!!</span> (n<span class="op">-</span><span class="dv">1</span>)</span></code></pre></div>
+<p>It’s interesting to note how this functions resembles the <code>breakBulkLinear</code> function. The only difference is that we are using the function application operator <code>(!)</code> instead of the data constructor <code>(:@)</code>.
+The function <code>link</code> is now defined as follows:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | &quot;link&quot; a compiled expression into Haskell native functions.</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="co">--   application terms will be transformed into real (!) applications</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="co">--   combinator symbols will be replaced by their actual function definition</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="ot">link ::</span> <span class="dt">CombinatorDefinitions</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span> <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>link definitions (<span class="dt">CApp</span> fun arg) <span class="ot">=</span> link definitions fun <span class="op">!</span> link definitions arg</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>link definitions (<span class="dt">CComb</span> comb)   <span class="ot">=</span> <span class="kw">case</span> <span class="fu">lookup</span> comb definitions <span class="kw">of</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>                                    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> resolveBulk comb</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>                                    <span class="dt">Just</span> e  <span class="ot">-&gt;</span> e</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>link _definitions expr          <span class="ot">=</span> expr</span></code></pre></div>
+<p>In the same way I have re-implemented Ben’s function <code>breakBulkLog</code> as <code>resolveBulkLog</code>.</p>
+<h2 id="performance-comparison">Performance Comparison</h2>
+<p>So far we have seen that for functions with more than two variables the Kiselyov algorithms generate code that is significantly smaller than optimized versions of classic bracket abstraction.
+But what about performance? Is the code generated by the Kiselyov algorithms also faster?</p>
+<p>To answer this question I have set up a benchmarking suite based on the <a href="http://www.serpentine.com/criterion/">micro-benchmarking framework Criterion</a>.</p>
+<p>In my suite I am testing the performance of combinations of the following components:</p>
+<ul>
+<li>the compilers <code>compileBracket</code>, <code>compileEta</code>, <code>compileBulk</code>, <code>compileBulkLinear</code> and <code>compileBulkLog</code> from the previous section</li>
+<li>the function factorial, fibonacci, ackermann and tak from the previous section</li>
+<li>the execution backenda Graph Reduction Engine and the HHI-reducer implementaion from my previous post. I have not implemented the Bulk combinators in the graph reduction engine. So I am not testing this backend with the <code>compileBulk</code> compiler.</li>
+<li>the HHI-Reducer with both <code>resolveBulkLinear</code> and <code>resolveBulkLog</code></li>
+</ul>
+<p>So lets start with an overview of the results for the Graph Reduction Backend.</p>
+<h3 id="performance-figures-for-the-graph-reduction-engine">Performance figures for the Graph Reduction Engine</h3>
+<p>As already mentioned <code>compileBulk</code> is not implemented in the graph reduction engine. I am also not considering the <code>compilePlain</code> and <code>compileK</code> compilers as they generate code that is significantly larger than the baseline.
+All durations are given in μs.</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>execution time [μs]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>41.34</td>
+<td>41.26</td>
+<td>41.46</td>
+<td>41.45</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>107.8</td>
+<td>108.4</td>
+<td>108.9</td>
+<td>113.4</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>32.22</td>
+<td>24.11</td>
+<td>25.15</td>
+<td>34.27</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>194.7</td>
+<td>80.18</td>
+<td>83.15</td>
+<td>102.7</td>
+</tr>
+</tbody>
+</table>
+<p>Let’s put these figures into perspective by comparing them to the emitted code size (in number of combinators):</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>code size [# comb.]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>13</td>
+<td>13</td>
+<td>14</td>
+<td>14</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>27</td>
+<td>27</td>
+<td>32</td>
+<td>36</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>59</td>
+<td>44</td>
+<td>64</td>
+<td>83</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>98</td>
+<td>58</td>
+<td>73</td>
+<td>81</td>
+</tr>
+</tbody>
+</table>
+<p>For <code>factorial</code> and <code>fibonacci</code> the code size is very similar for all compilers. And the performance figures are also very similar.</p>
+<p>But for <code>ackermann</code> and <code>tak</code> the code size for <code>compileEta</code> is significantly smaller than for the other compilers. An interesting finding here is, that the performance of the <code>compileEta</code> code is significantly better than for the <code>compileBracket</code> code. But the performance of the <code>compileBulkLinear</code> and <code>compileBulkLog</code> code is faster per instruction than the <code>compileBracket</code>and <code>compileEta</code> code.</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>time / comb. [μs]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>3.18</td>
+<td>3.17</td>
+<td>2.96</td>
+<td>2.96</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>3.99</td>
+<td>4.01</td>
+<td>3.40</td>
+<td>3.15</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>0.55</td>
+<td>0.55</td>
+<td>0.39</td>
+<td>0.41</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>1.99</td>
+<td>1.38</td>
+<td>1.14</td>
+<td>1.27</td>
+</tr>
+</tbody>
+</table>
+<p>Overall <code>compileEta</code> gives the best result for the Graph Reduction Engine.</p>
+<h3 id="performance-figures-for-the-hhi-reducer">Performance figures for the HHI-Reducer</h3>
+<p>first all figures without the Bulk Combinators execution</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>execution time [μs]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>14.29</td>
+<td>14.30</td>
+<td>14.33</td>
+<td>14.28</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>25.53</td>
+<td>25.68</td>
+<td>25.88</td>
+<td>27.12</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>10.19</td>
+<td>7.309</td>
+<td>8.012</td>
+<td>10.12</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>30.35</td>
+<td>21.28</td>
+<td>21.81</td>
+<td>26.21</td>
+</tr>
+</tbody>
+</table>
+<p>The absolute execeution times are significantly smaller than for the Graph Reduction Engine. But the relative performance figures are very similar. Again <code>compileEta</code> gives the best result for the HHI-Reducer. In particular for <code>ackermann</code> and <code>tak</code> the performance of <code>compileEta</code> code is significantly better than for the other compilers.</p>
+<h3 id="performance-figures-with-bulk-combinators-execution">Performance figures with Bulk Combinators execution</h3>
+<p>Now we want to see whether the native implementation of Bulk Combinators in the HHI-Reducer - <a href="#executing-bulk-combinators">as outlined in the previous section</a> - can beat the performance of the <code>compileEta</code> compilation.</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>execution time [μs]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulk (lin. execution)</th>
+<th>compileBulk (log. execution)</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>14.29</td>
+<td>14.30</td>
+<td>14.34</td>
+<td>14.28</td>
+<td>14.33</td>
+<td>14.28</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>25.53</td>
+<td>25.68</td>
+<td>25.73</td>
+<td>25.91</td>
+<td>25.88</td>
+<td>27.12</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>10.19</td>
+<td>7.309</td>
+<td>7.350</td>
+<td>7.349</td>
+<td>8.012</td>
+<td>10.12</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>30.35</td>
+<td>21.28</td>
+<td>17.90</td>
+<td>17.97</td>
+<td>21.81</td>
+<td>26.21</td>
+</tr>
+</tbody>
+</table>
+<p>I see two main findings here:</p>
+<ol type="1">
+<li><p>For <code>factorial</code>, <code>fibonacci</code> and <code>ackermann</code> the performance of linear and logarithmic execution of Bulk Combinators is not better than the performance of <code>compileEta</code> code.</p>
+<p>But for <code>tak</code> the performance of both linear and logarithmic execution of Bulk Combinators is significantly better than the performance of <code>compileEta</code> code. The linear exceution of Bulk Combinators is slightly faster than the logarithmic execution.</p></li>
+<li><p>The native implementation of Bulk Combinators is significantly faster than the <code>resolveBulkLinear</code> and <code>resolveBulkLog</code> for <code>ackermann</code> and <code>tak</code>.</p></li>
+</ol>
+<p>Let’s put these results into perspective by comparing them to the emitted code size (in number of combinators):</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>code size [# comb.]</th>
+<th>compileBracket</th>
+<th>compileEta</th>
+<th>compileBulk (lin. execution)</th>
+<th>compileBulk (log. execution)</th>
+<th>compileBulkLinear</th>
+<th>compileBulkLog</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>13</td>
+<td>13</td>
+<td>14</td>
+<td>14</td>
+<td>14</td>
+<td>14</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>27</td>
+<td>27</td>
+<td>26</td>
+<td>26</td>
+<td>32</td>
+<td>36</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>59</td>
+<td>44</td>
+<td>36</td>
+<td>36</td>
+<td>64</td>
+<td>83</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>98</td>
+<td>58</td>
+<td>29</td>
+<td>29</td>
+<td>73</td>
+<td>81</td>
+</tr>
+</tbody>
+</table>
+<ol type="1">
+<li><p>For <code>factorial</code> and <code>fibonacci</code> the code size is very similar for all compilers. And the performance figures also don’t vary much.</p>
+<p>For <code>ackermann</code> the code size for <code>compileBulk</code> is about 82% of the code size for <code>compileEta</code>. But the execution time is not faster. This is due to the fact that the Bulk Combinator are more complex than the standard combinators. So the execution time per combinator is higher.</p>
+<p>For <code>tak</code> the code size for <code>compileBulk</code> is only 50% of the code size for <code>compileEta</code>. The execution time is now 84% of the execution time for <code>compileEta</code>. So even if the execution time per combinator is higher the overall execution time is now lower as the code size is significantly smaller.</p></li>
+<li><p>Looking at the code sizes of the <code>compileBulkLinear</code> and <code>compileBulkLog</code> compilers we see that the code size is signifantly larger than for the <code>compileEta</code> and <code>compileBulk</code> compilers for <code>ackermann</code> and <code>tak</code>. So it is now wonder that the execution time is slower than for the `<code>compileEta</code> and <code>compileBulk</code> compilers.</p></li>
+</ol>
+<h3 id="comparison-to-native-haskell-code">Comparison to native Haskell code</h3>
+<p>As a final comparison I have also implemented the factorial, fibonacci, ackermann and tak functions as native Haskell functions. To make the comparison fair I have used a notation using the <code>fix</code> function to implement the Y-Combinator. See for example the implementation of the factorial function:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ot">fact ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>fact <span class="ot">=</span> fix (\f n <span class="ot">-&gt;</span> <span class="kw">if</span> n <span class="op">==</span> <span class="dv">0</span> <span class="kw">then</span> <span class="dv">1</span> <span class="kw">else</span> n <span class="op">*</span> f (n<span class="op">-</span><span class="dv">1</span>))</span></code></pre></div>
+<p>For Graph Reduction Engine I am using the <code>compileEta</code> compiler and for the HHI-Reducer I am using the <code>compileBulk</code> compiler with linear execution of Bulk combinators. The results are as follows:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>execution time [μs]</th>
+<th>GraphReduction with compileEta</th>
+<th>HHI-Reducer with compileBulk (lin. ex.)</th>
+<th>native Haskell</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>41.26</td>
+<td>14.34</td>
+<td>2.776</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>108.4</td>
+<td>25.73</td>
+<td>1.824</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>24.11</td>
+<td>7.350</td>
+<td>0.259</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>80.18</td>
+<td>17.90</td>
+<td>0.810</td>
+</tr>
+</tbody>
+</table>
+<p>In the following table I’m computing ratios to get simpler comparison metrics:</p>
+<table>
+<thead>
+<tr class="header">
+<th>time ratios</th>
+<th>ratio GR / HHI</th>
+<th>ratio GR/ native</th>
+<th>ratio HHI / native</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>factorial</td>
+<td>2.88</td>
+<td>14.86</td>
+<td>5.17</td>
+</tr>
+<tr class="even">
+<td>fibonacci</td>
+<td>4.21</td>
+<td>59.43</td>
+<td>14.11</td>
+</tr>
+<tr class="odd">
+<td>ackermann</td>
+<td>3.28</td>
+<td>93.12</td>
+<td>28.38</td>
+</tr>
+<tr class="even">
+<td>tak</td>
+<td>4.48</td>
+<td>98.99</td>
+<td>22.10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this post I have shown that the Kiselyov algorithms for compiling SKI combinators to lambda calculus can be used to generate code that is significantly smaller than optimized versions of classic bracket abstraction.</p>
+<p>In particular for functions with more than two variables the generation of Bulk-Combinator code avoids the quadratic growth of the code size that is typical for bracket abstraction.</p>
+<p>The reduced code size also leads to better performance. In particular for functions with more than two variables the Kiselyov algorithms generate code that is significantly faster than optimized versions of classic bracket abstraction.</p>
+<p>I have also shown that the native implementation of Bulk Combinators in the HHI-Reducer can beat the performance of the <code>compileEta</code> compilation. In particular for functions with more than two variables the native implementation of Bulk Combinators is significantly faster.</p>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a> | 
+    Source code is available at 
+    <a href="https://github.com/thma/thma.github.io">GitHub</a>
+</footer>
+
+</body>
+</html>
