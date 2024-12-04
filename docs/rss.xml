@@ -7,8 +7,319 @@
         <description><![CDATA[This feed lists the latest blog posts]]></description>
         <atom:link href="https://thma.github.io//rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sun, 08 Oct 2023 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Thu, 05 Dec 2024 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Real World REST APIs with Scotty and Generic-Persistence</title>
+    <link>https://thma.github.io//posts/2024-12-05-real-worlds-rest-services-with-scotty-and-gp.html</link>
+    <description><![CDATA[<div class="info">
+    <em>Posted on December  5, 2024
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/scotty-gp-service"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="abstract">Abstract</h2>
+<p>In this blog post I will show how to write a real world REST service in Haskell using the Scotty web framework and the generic-persistence database access library.</p>
+<p>In particular I will demonstrate how to
+- build CRUD operations against a database backend,
+- add pagination support
+- and secure access with token based authentication</p>
+<p>My main motivation for this blog post is to show how compact and readable real world solutions can be written in Haskell.</p>
+<h2 id="introduction">Introduction</h2>
+<p>Some time ago, I discovered a compact and easy-to-understand article on <a href="https://camunda.com/resources/microservices/haskell/">how to create a REST service in Haskell with Scotty</a>.
+The article provides a simple example of a REST service that allows to manage products in an in-memory data structure. The example shows how to use <a href="https://github.com/scotty-web/scotty">Scotty</a> to define the REST routes and how to use the <a href="https://github.com/haskell/aeson">aeson</a> library to serialize and deserialize JSON data.</p>
+<p>The article was written by Camunda, a company that specializes in modeling and automating business processes.
+They see orchestration of microservices as a key use case for their platform and the article provides examples in several programming languages (Java, C#, Python, Go, Typescript and Haskell).</p>
+<p>When comparing the Haskell code with the other languages, I found the Haskell code to be the most concise and readable.
+That came a bit of a surprise to me, as I had expected that languages like Go, Python or Typescript come with top notch libraries that allow to write REST services in a declarative and compact way.</p>
+<p>As I found this langauge comparision based on a simple but practical example quite interesting, I created a <a href="https://github.com/thma/scotty-service">repository with the Haskell code</a> to invite people to experiment with the code.</p>
+<p>I also contributed back to the authors by providing some improvements to the Haskell code made possible by the GHC2021 language features and some additional ones like <code>DeriveAnyClass</code>, <code>DeriveGeneric</code>, <code>DuplicateRecordFields</code> and <code>OverloadedRecordDot</code>. I also contributed some additional perspectives to the pro and cons section of the article. My suggestinions were well received and the article was updated accordingly.</p>
+<p>The article ends with giving some ideas how the example code base could be extended to make it more useful in a real world scenario:</p>
+<ul>
+<li>Adding token based authentication</li>
+<li>Adding a database backend</li>
+<li>Adding pagination support to the <code>GET</code> requests</li>
+</ul>
+<p>In this blog post I will show how to implement these features using <code>scotty</code>, <code>wai</code> and <code>generic-persistence</code> libraries. I will not explain the basics setting up Scotty based REST services, as this is already well covered in the above mentioned article.</p>
+<h2 id="adding-a-database-backend">Adding a database backend</h2>
+<p>There are <a href="https://github.com/Zelenya/elephants">plenty of options to choose from</a> when it comes to Haskell database access libraries. I choose <a href="https://github.com/thma/generic-persistence#readme">generic-persistence</a> as it aims at minimizing boilerplate code and working in a declarative way. (Being the author of <code>generic-persistence</code> I might be biased here, but I think it is a good choice for this example).</p>
+<h3 id="adding-generic-persistence-to-the-project">Adding generic-persistence to the project</h3>
+<p>The first step is to add the library as a dependency to the <code>package.yaml</code> file:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dependencies</span><span class="kw">:</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> generic-persistence</span></span></code></pre></div>
+<h3 id="mapping-the-data-model-to-the-data-base">Mapping the data model to the data base</h3>
+<p>Next we have to enable the Datamodel to be used with <code>generic-persistence</code>. This is done by deriving the <code>Entity</code> type class for the <code>Product</code> datatype:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">Database.GP</span>     (<span class="dt">Entity</span> (..))</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">-- Define a Product data type</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Product</span> <span class="ot">=</span> <span class="dt">Product</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  {<span class="ot"> id          ::</span> <span class="dt">Int</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="ot">    name        ::</span> <span class="dt">Text</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="ot">    description ::</span> <span class="dt">Text</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ot">    price       ::</span> <span class="dt">Double</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Generic</span>, <span class="dt">ToJSON</span>, <span class="dt">FromJSON</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- Make Product an instance of Entity</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Entity</span> <span class="dt">Product</span> <span class="kw">where</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>  idField <span class="ot">=</span> <span class="st">&quot;id&quot;</span>  </span></code></pre></div>
+<p>In order to store a Haskell data type in a relational database, we need to define a mapping between the Haskell type and the corresponding database table. This mapping is defined by the <a href="https://hackage.haskell.org/package/generic-persistence-0.7.0.1/docs/Database-GP-Entity.html"><code>Entity</code></a> type class. This type class comes with default implementations for all methods which define the standard behaviour.
+This default mapping will work for many cases, but it can be customized by overriding the default implementations.</p>
+<p>By default <code>generic-persistence</code> would expect the primary key field to be named <code>productId</code>. If the primary key field has a different name as in our case, we have to declare it explicitely by defining <code>idField = "id"</code>.</p>
+<p>Based on the <code>Entity</code> instance, <code>generic-persistence</code> can generate the necessary SQL queries to interact with the database. For example it will generate the following <code>CREATE TABLE</code> statement for the <code>Product</code> datatype:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- DDL for SQLlite</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> Product (<span class="kw">id</span> <span class="dt">INTEGER</span> <span class="kw">PRIMARY</span> <span class="kw">KEY</span>, name TEXT, description TEXT, price <span class="dt">REAL</span>);<span class="ot">&quot;</span></span></code></pre></div>
+<p>If you are working with an existing database with deviating table names or column names, you can customize the mapping by providing a custom instance of <code>Entity</code> for the datatype.</p>
+<h3 id="setting-up-the-database-connection">Setting up the database connection</h3>
+<p>To interact with the database in a multi-threaded web server, we can’t use a single connection but need a connection pool. The <code>generic-persistence</code> library provides a function <code>createConnPool</code> to create a connection pool to a database.
+In this example we use a SQLite database, but the library supports other databases as well. setting up a connection pool to a SQLite database is done as follows:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Create a connection pool to a SQLite db specified by its file path</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ot">sqlLitePool ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">ConnectionPool</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>sqlLitePool dbFile <span class="ot">=</span> createConnPool <span class="dt">AutoCommit</span> dbFile connectSqlite3 <span class="dv">10</span> <span class="dv">100</span></span></code></pre></div>
+<p>With this helper function defined we can now create a connection pool to the SQLite database and use it to interact with the database:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- create a connection pool to the SQLite database</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  pool <span class="ot">&lt;-</span> sqlLitePool <span class="st">&quot;sqlite.db&quot;</span></span></code></pre></div>
+<h3 id="interacting-with-the-database">Interacting with the database</h3>
+<p>Once we have create a connection pool to the database, we can use it in the Scotty actions to interact with the database.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- create a connection pool to the SQLite database</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  pool <span class="ot">&lt;-</span> sqlLitePool <span class="st">&quot;sqlite.db&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- Start the web server</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  scotty <span class="dv">3000</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to get all products by performing a select query on the Product table.</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    get <span class="st">&quot;/products&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>      products <span class="ot">&lt;-</span> liftIO <span class="op">$</span> withResource pool <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        select <span class="op">@</span><span class="dt">Product</span> conn allEntries</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>      json products</span></code></pre></div>
+<p>The <code>withResource</code> function is used to acquire a connection from the connection pool, perform the database operation and release the connection afterwards.
+The <code>liftIO</code> is needed to lift the <code>IO</code> action into the Scotty action monad <code>ActionM</code>.</p>
+<p>The signature of the <code>select</code> function is <code>select :: forall a. (Entity a) =&gt; Conn -&gt; WhereClauseExpr -&gt; IO [a]</code>.</p>
+<p>In order to provide the type information for the <code>select</code> function, we use the type application syntax <code>@Product</code>.</p>
+<p>The <code>allEntries</code> value is a predefined <code>WhereClauseExpr</code> that does not constrain the returned rows.</p>
+<p>In order simplify the code further, we can define a helper function <code>withPooledConn</code> that hides the mechanics of acquiring the connection from the pool and the subsequent <code>liftIO</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- create a connection pool to the SQLite database</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  pool <span class="ot">&lt;-</span> sqlLitePool <span class="st">&quot;sqlite.db&quot;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- define Helper function to run a database action with a connection from the pool</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> withPooledConn <span class="ot">=</span> liftIO <span class="op">.</span> withResource pool </span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- Start the web server</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>  scotty <span class="dv">3000</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to get all products by performing a select query on the Product table.</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    get <span class="st">&quot;/products&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>      products <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        select <span class="op">@</span><span class="dt">Product</span> conn allEntries</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>      json products</span></code></pre></div>
+<p>Now we start writing the other CRUD operations for the <code>Product</code> datatype:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to get a product by ID</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    get <span class="st">&quot;/products/:id&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>      productIdParam <span class="ot">&lt;-</span> captureParam <span class="st">&quot;id&quot;</span><span class="ot"> ::</span> <span class="dt">ActionM</span> <span class="dt">Int</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>      prod <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        selectById <span class="op">@</span><span class="dt">Product</span> conn productIdParam</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> prod <span class="kw">of</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Just</span> p  <span class="ot">-&gt;</span> json p</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> raiseStatus status404 <span class="st">&quot;not found&quot;</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to create a new product</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    post <span class="st">&quot;/products&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>      newProduct <span class="ot">&lt;-</span> jsonData</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>      insertedProduct <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>        insert <span class="op">@</span><span class="dt">Product</span> conn newProduct</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>      json insertedProduct</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to update a product by ID</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>    put <span class="st">&quot;/products/:id&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>      productIdParam <span class="ot">&lt;-</span> captureParam <span class="st">&quot;id&quot;</span></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>      updatedProduct <span class="ot">&lt;-</span> jsonData</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> updatedProductWithId <span class="ot">=</span> updatedProduct {<span class="fu">id</span> <span class="ot">=</span> productIdParam}<span class="ot"> ::</span> <span class="dt">Product</span></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>      updated <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>        upsert <span class="op">@</span><span class="dt">Product</span> conn updatedProductWithId</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>      json updated</span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to delete a product by ID</span></span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a>    delete <span class="st">&quot;/products/:id&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a>      productIdParam <span class="ot">&lt;-</span> captureParam <span class="st">&quot;id&quot;</span><span class="ot"> ::</span> <span class="dt">ActionM</span> <span class="dt">Int</span></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a>      deleted <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a>        deleteById <span class="op">@</span><span class="dt">Product</span> conn productIdParam</span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a>      json deleted</span></code></pre></div>
+<p>The <code>selectById</code>, <code>insert</code>, <code>upsert</code> and <code>deleteById</code> functions work similar to the <code>select</code> function, so there is not much to explain here. Please note how the <code>generic-persistence</code> API allows to concentrate on the intented semantics of the operation and hides all the nitty-gritty technical details of data mapping and database operations.</p>
+<h2 id="pagination-of-results">Pagination of results</h2>
+<p>Pagination of large result sets is a common requirement for REST services.<br />
+Many relational databases provide support for pagination through the <code>LIMIT</code> and <code>OFFSET</code> clauses in the <code>SELECT</code> statement.
+<code>generic-persistence</code> provides a <code>limitOffset</code> operator that can be used to limit the number of rows returned and to specify the offset position of the first row to be returned. We will use this operator to implement pagination in the <code>GET /products</code> route.</p>
+<p>When calling <code>GET /products</code> we want to be able to specify the page number and the number of records per page as the query parameters of the request.
+So as an example the request <code>GET /products?page=4&amp;size=20</code> should return the 20 products starting from the 61st product in the database.
+The response should also include a pagination info that contains:</p>
+<ul>
+<li>the current page number</li>
+<li>the total number of pages</li>
+<li>the total number of records</li>
+<li>the number of the next page if it exists</li>
+<li>the number of the previous page if it exists</li>
+</ul>
+<p>a concrete JSON structure could look like follows:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;currentPage&quot;</span><span class="fu">:</span> <span class="dv">4</span><span class="fu">,</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;nextPage&quot;</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">,</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;prevPage&quot;</span><span class="fu">:</span> <span class="dv">3</span><span class="fu">,</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;totalPages&quot;</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">,</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;totalRecords&quot;</span><span class="fu">:</span> <span class="dv">100</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h3 id="a-pagination-data-type">A Pagination data type</h3>
+<p>To represent the pagination info in Haskell, we define a data type <code>Pagination</code>:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Define a Paging information data type</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Pagination</span> <span class="ot">=</span> <span class="dt">Pagination</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  {<span class="ot"> totalRecords ::</span> <span class="dt">Int</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="ot">    currentPage  ::</span> <span class="dt">Int</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ot">    totalPages   ::</span> <span class="dt">Int</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="ot">    nextPage     ::</span> <span class="dt">Maybe</span> <span class="dt">Int</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="ot">    prevPage     ::</span> <span class="dt">Maybe</span> <span class="dt">Int</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Generic</span>, <span class="dt">ToJSON</span>, <span class="dt">FromJSON</span>)</span></code></pre></div>
+<p>We also provide a helper function that allows to calculate the pagination info based on the total number of records, the current page and the requested page size:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Helper function to build pagination information</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ot">buildPagination ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Pagination</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>buildPagination totalRecords currentPage pageSize <span class="ot">=</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> totalPages <span class="ot">=</span> (totalRecords <span class="op">+</span> pageSize <span class="op">-</span> <span class="dv">1</span>) <span class="ot">`div`</span> pageSize</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>      nextPage</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> currentPage <span class="op">&lt;</span> <span class="dv">1</span>          <span class="ot">=</span> <span class="dt">Just</span> <span class="dv">1</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> currentPage <span class="op">&lt;</span> totalPages <span class="ot">=</span> <span class="dt">Just</span> (currentPage <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> <span class="fu">otherwise</span>                <span class="ot">=</span> <span class="dt">Nothing</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>      prevPage</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> currentPage <span class="op">&gt;</span> totalPages <span class="ot">=</span> <span class="dt">Just</span> totalPages</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> currentPage <span class="op">&gt;</span> <span class="dv">1</span>          <span class="ot">=</span> <span class="dt">Just</span> (currentPage <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> <span class="fu">otherwise</span>                <span class="ot">=</span> <span class="dt">Nothing</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>   <span class="kw">in</span> <span class="dt">Pagination</span> totalRecords currentPage totalPages nextPage prevPage</span></code></pre></div>
+<h3 id="adding-pagination-to-the-get-products-route">Adding pagination to the <code>GET /products</code> route</h3>
+<p>To add pagination to the <code>GET /products</code> route, we need to extract the <code>page</code> and <code>size</code> query parameters from the request and use them to fetch only the matching rows.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Define a route to list all products with pagination</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    get <span class="st">&quot;/products&quot;</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>      currentPage <span class="ot">&lt;-</span> queryParam <span class="st">&quot;page&quot;</span> <span class="ot">`catchAny`</span> (\_ <span class="ot">-&gt;</span> <span class="fu">return</span> <span class="dv">1</span>)   <span class="co">-- default to 1</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>      pageSize    <span class="ot">&lt;-</span> queryParam <span class="st">&quot;size&quot;</span> <span class="ot">`catchAny`</span> (\_ <span class="ot">-&gt;</span> <span class="fu">return</span> <span class="dv">20</span>)  <span class="co">-- default to 20</span></span></code></pre></div>
+<p>Based on the <code>currentPage</code> and <code>pageSize</code> we can calculate the offset position of the rows to be returned:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> offset <span class="ot">=</span> (currentPage <span class="op">-</span> <span class="dv">1</span>) <span class="op">*</span><span class="ot"> pageSize ::</span> <span class="dt">Int</span></span></code></pre></div>
+<p>Using <code>offset</code> and <code>pageSize</code> we can now perform the select query with the <code>limitOffset</code> operator provided by <code>generic-persistence</code> in order to select only the records of the requested page:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>      page <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>        select <span class="op">@</span><span class="dt">Product</span> conn (allEntries <span class="ot">`limitOffset`</span> (offset, pageSize))</span></code></pre></div>
+<p>Finally we build the pagination info and include it in the output <code>ProductList</code> result. We’ll have to use the <code>count</code> function to get the total number of <code>Product</code> records in the database:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>      totalRecords <span class="ot">&lt;-</span> withPooledConn <span class="op">$</span> \conn <span class="ot">-&gt;</span> </span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>        count <span class="op">@</span><span class="dt">Product</span> conn allEntries</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>      <span class="kw">let</span> info <span class="ot">=</span> buildPagination totalRecords currentPage pageSize</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>      json <span class="op">$</span> <span class="dt">ProductList</span> page info</span></code></pre></div>
+<p>The <code>ProductList</code> data type is defined as follows:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ProductList</span> <span class="ot">=</span> <span class="dt">ProductList</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  { </span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="ot">    products   ::</span> [<span class="dt">Product</span>],</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="ot">    pagination ::</span> <span class="dt">Pagination</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Generic</span>, <span class="dt">ToJSON</span>, <span class="dt">FromJSON</span>)</span></code></pre></div>
+<p>A typical JSON output will look like follows (Assuming that we are calling <code>localhost:3000/products?page=4&amp;size=3</code>):</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;pagination&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;currentPage&quot;</span><span class="fu">:</span> <span class="dv">4</span><span class="fu">,</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;nextPage&quot;</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">,</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;prevPage&quot;</span><span class="fu">:</span> <span class="dv">3</span><span class="fu">,</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;totalPages&quot;</span><span class="fu">:</span> <span class="dv">34</span><span class="fu">,</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;totalRecords&quot;</span><span class="fu">:</span> <span class="dv">100</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;products&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Description 10&quot;</span><span class="fu">,</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">10</span><span class="fu">,</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Product 10&quot;</span><span class="fu">,</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;price&quot;</span><span class="fu">:</span> <span class="fl">119.99</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Description 11&quot;</span><span class="fu">,</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">11</span><span class="fu">,</span></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Product 11&quot;</span><span class="fu">,</span></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;price&quot;</span><span class="fu">:</span> <span class="fl">129.99</span></span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Description 12&quot;</span><span class="fu">,</span></span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="dv">12</span><span class="fu">,</span></span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Product 12&quot;</span><span class="fu">,</span></span>
+<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;price&quot;</span><span class="fu">:</span> <span class="fl">139.99</span></span>
+<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<h2 id="adding-token-based-authentication">Adding token based authentication</h2>
+<p><code>Scotty</code> is build on top of the <code>wai</code> web application interface, which allows to add middlewares to the application. Middlewares are functions that can modify the request and response of the application.
+To add token based authentication to the service, we can use the <code>wai-middleware-bearer</code> middleware. This middleware allows to extract the token from the <code>Authorization</code> header and to validate it against a list of known tokens.</p>
+<p>Using such a middleware is a good practice as it allows to separate the business logic of the service (as defined by the Scotty routes) from other concerns like.</p>
+<ul>
+<li>logging</li>
+<li>request validation</li>
+<li>authentication / authorization</li>
+<li>compression</li>
+<li>HTTPS enforcement.</li>
+</ul>
+<p>Another good thing about wai middlewares is that they can be composed in a pipeline, so that each middleware can focus on a single concern. And they work independently of the actual web application framework used (like Scotty, Servant and Yesod).</p>
+<h3 id="adding-middlewares-to-a-scotty-application">Adding middlewares to a Scotty application</h3>
+<p>Adding a middleware to a <code>Scotty</code> application is done by using the <code>middleware</code> function provided by the library.
+For example we could add a middleware that logs all incoming requests to the console:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- Start the web server</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  scotty <span class="dv">3000</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Add middleware to log all incoming requests</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    middleware logStdoutDev</span></code></pre></div>
+<p>This will produce a log output like follows:</p>
+<pre class="shell"><code>GET /products
+  Params: [(&quot;page&quot;,&quot;2&quot;),(&quot;size&quot;,&quot;13&quot;)]
+  Accept: */*
+  Status: 200 OK 0.004865s
+POST /products/
+  Request Body: {
+    &quot;description&quot;: &quot;classic pink blue&quot;,
+    &quot;id&quot;: 3,
+    &quot;name&quot;: &quot;Lava Lamp&quot;,
+    &quot;price&quot;: 499.99
+  }
+  Accept: */*
+  Status: 200 OK 0.00759s</code></pre>
+<h3 id="adding-the-wai-middleware-bearer-middleware">Adding the <code>wai-middleware-bearer</code> middleware</h3>
+<p>To add the <code>wai-middleware-bearer</code> middleware we first have to add it as a dependency to the <code>package.yaml</code> file:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dependencies</span><span class="kw">:</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="co">...</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="co">- wai-middleware-bearer</span></span></code></pre></div>
+<p>The package <code>Network.Wai.Middleware.BearerTokenAuth</code> provides sevaral functions that can be used to create a middleware that validates the token in the <code>Authorization</code> header. For example there is a function <code>tokenListAuth :: [ByteString] -&gt; Middleware</code> that takes a list of known tokens and returns a middleware that validates the token against this list:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>  scotty <span class="dv">3000</span> <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- validate token against a list of known tokens</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    middleware <span class="op">$</span> tokenListAuth [<span class="st">&quot;secret&quot;</span>, <span class="st">&quot;top-secret&quot;</span>]</span></code></pre></div>
+<p>In a real world scenario the tokens would be stored in a secure way. But even then it could still a bit too static as the tokens would be only loaded once when the application starts.</p>
+<h3 id="using-a-custom-token-validator-function">Using a custom token validator function</h3>
+<p>We are looking for a more dynamic way to validate the tokens, that will allow to change the tokens without restarting the application.</p>
+<p><code>wai-middleware-bearer</code> supports using custom token validators that can be passed to the middleware by using the <code>tokenAuth :: TokenValidator -&gt; Middleware</code> function.
+Here <code>TokenValidator</code> is a type synonym for a validation function: <code>type TokenValidator = ByteString -&gt; IO Bool</code>. So we will use <code>tokenAuth</code> to pass in our custom token validator function to create a middleware.</p>
+<p>For this we will provide our own token validator function <code>validateToken :: ConnectionPool -&gt; TokenValidator</code> that will be called for each request to validate the token against the database.
+In this way we can change the tokens in the database without restarting the application.</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">validateToken ::</span> <span class="dt">ConnectionPool</span> <span class="ot">-&gt;</span> <span class="dt">ByteString</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Bool</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>validateToken pool token <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  now <span class="ot">&lt;-</span> getCurrentTime                     <span class="co">-- get the current time</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  tokens <span class="ot">&lt;-</span> withResource pool <span class="op">$</span> \conn <span class="ot">-&gt;</span>    <span class="co">-- use a connection from the pool</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    select <span class="op">@</span><span class="dt">BearerToken</span> conn                <span class="co">-- to select tokens from the BearerToken table    </span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>      (field <span class="st">&quot;token&quot;</span> <span class="op">=.</span> token <span class="op">&amp;&amp;.</span>           <span class="co">-- where the token matches, and </span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>       field <span class="st">&quot;expiry&quot;</span> <span class="op">&gt;.</span> now)               <span class="co">-- expiry is in the future</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">return</span> <span class="op">$</span> <span class="fu">not</span> (<span class="fu">null</span> tokens)                <span class="co">-- return True if a valid token exists</span></span></code></pre></div>
+<h2 id="summary">Summary</h2>
+<p>In this blog post we have shown how to extend the simple Scotty based REST service example from the Camunda article with a database backend, pagination support and token based authentication.</p>
+<p>We have shown that Haskell is a great language for writing real world REST services. The code is concise, readable and easy to maintain. The type system helps to catch many errors at compile time and the GHC language extensions allow to write even more concise code.</p>
+<p>As a developer, you simply state your intentions in a declaratice way and delegate all the technical details to the libraries.</p>
+<p>I hope you enjoyed this blog post and found it useful. If you have any questions or suggestions, please feel free to contact me.</p>
+]]></description>
+    <pubDate>Thu, 05 Dec 2024 00:00:00 UT</pubDate>
+    <guid>https://thma.github.io//posts/2024-12-05-real-worlds-rest-services-with-scotty-and-gp.html</guid>
+    <dc:creator>Thomas Mahler</dc:creator>
+</item>
+<item>
     <title>Optimizing bracket abstraction for Combinator Reduction</title>
     <link>https://thma.github.io//posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html</link>
     <description><![CDATA[<div class="info">
@@ -3393,99 +3704,6 @@ Finally the result is read out from the accumulator and extracted from the ST Mo
 ]]></description>
     <pubDate>Mon, 27 Dec 2021 00:00:00 UT</pubDate>
     <guid>https://thma.github.io//posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html</guid>
-    <dc:creator>Thomas Mahler</dc:creator>
-</item>
-<item>
-    <title>λ-Calculus, Combinatory Logic and Cartesian Closed Categories</title>
-    <link>https://thma.github.io//posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html</link>
-    <description><![CDATA[<div class="info">
-    <em>Posted on April  4, 2021
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<h2 id="introduction">Introduction</h2>
-<p>Recently I read the very interesting <a href="http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf">Compiling to Categories</a> paper by Conal Elliot.</p>
-<p>He presents the idea to compile haskell programs into expressions of cartesian closed categories by λ-elimination.
-These expressions can then be used for different purposes like alternative program evaluation, graphic representation
-of program graphs, designing hardware layouts for algorithms, etc.</p>
-<p>The λ-elimination process applied reminded me a lot of the
-<a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">bracket abstraction</a> used when compiling λ-terms to SKI-Combinators.</p>
-<p>In the following I’m having a closer look at the parallels between compiling lambda to CCC and compiling lambda to SKI-combinators</p>
-<h2 id="lambda-calculus">Lambda Calculus</h2>
-<p>I assume at least a rough familiarity with the λ-calculus.
-If you need a refresher I recommend <a href="http://dev.stephendiehl.com/fun/003_lambda_calculus.html">the chapter on λ-calculus in Stephen Diels excellent Write You a Haskell</a>.</p>
-<p>Instead of the classical notation of lambda terms I’ll use the equivalent Haskell notation throughout this post.
-So instead of writing <code>λx.x a</code> I’ll write <code>\x -&gt; x a</code>.</p>
-<h2 id="bracket-abstraction-in-combinatory-logic">Bracket Abstraction in Combinatory Logic</h2>
-<blockquote>
-<p>The SKI combinator calculus is a combinatory logic, a computational system that may be perceived as a reduced version of the untyped lambda calculus.
-It can be thought of as a computer programming language […] because it is an extremely simple Turing complete language.
-It was introduced by Moses Schönfinkel and Haskell Curry.</p>
-<p>Quoted from <a href="https://en.wikipedia.org/wiki/SKI_combinator_calculus">Wikipedia</a></p>
-</blockquote>
-<p>λ-terms can be converted to variable free SKI combinator terms with a process called <a href="https://en.wikipedia.org/wiki/Combinatory_logic#Completeness_of_the_S-K_basis">bracket abstraction</a>.
-Bracket abstraction <code>absCL</code> is defined by the following equations (given in pseudo Haskell notation, as pattern matching on functions is not possible in Haskell):</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>absCL (\x <span class="ot">-&gt;</span> x)   <span class="ot">=</span> i</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>absCL (\x <span class="ot">-&gt;</span> y)   <span class="ot">=</span> k y</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>absCL (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> s (\x <span class="ot">-&gt;</span> p) (\x <span class="ot">-&gt;</span> q)</span></code></pre></div>
-<p>where the combinators <code>i</code>, <code>k</code> and <code>s</code> are defined as follows (these are valid haskell definitions):</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">i ::</span> a <span class="ot">-&gt;</span> a</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>i x <span class="ot">=</span> x</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ot">k ::</span> a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> a</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>k x y <span class="ot">=</span> x</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="ot">s ::</span> (a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> c</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>s p q x <span class="ot">=</span> p x (q x)  </span></code></pre></div>
-<p>Please note that <code>i</code> is identical to <code>id</code> and <code>k</code> is identical to <code>const</code> from the Haskell Prelude.</p>
-<p>Once the λ-terms are compiled to combinator terms, these terms can be interpreted quite efficiently as they don’t contain any variables and so no environment-handling is needed.</p>
-<p>Combinator terms also allow to apply several more advanced interpretation techniques like graph-reduction, node-sharing, parallel reduction, etc.</p>
-<p>For a very cool demo have a look at the <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">web assembly based graph reduction engine by Ben Lynn</a>.</p>
-<h2 id="cartesian-closed-categories-ccc">Cartesian Closed Categories (CCC)</h2>
-<p>In his famous paper <a href="http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf">Compiling to Categories</a> Conal Elliot describes a way to compile from simply typed lambda-calculus terms to cartesian closed categories(CCC).</p>
-<p>At the core of his approach sits a transformation from lambda-terms to CCC expressions that are done by eliminating variables by an abstraction function <code>absCCC</code> (again in pseudo-Haskell):</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>absCCC (\x <span class="ot">-&gt;</span> x)   <span class="ot">=</span> <span class="fu">id</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>absCCC (\x <span class="ot">-&gt;</span> y)   <span class="ot">=</span> <span class="fu">const</span> y</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>absCCC (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> apply <span class="op">.</span> ((\x <span class="ot">-&gt;</span> p) △ (\x <span class="ot">-&gt;</span> q))</span></code></pre></div>
-<p>Where <code>(△)</code> is introduced by the <code>Cartesian</code> category:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">Category</span> k <span class="ot">=&gt;</span> <span class="dt">Cartesian</span> k <span class="kw">where</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  (△)<span class="ot"> ::</span> (a <span class="ot">`k`</span> c) <span class="ot">-&gt;</span> (a <span class="ot">`k`</span> d) <span class="ot">-&gt;</span> (a <span class="ot">`k`</span> (c, d))</span></code></pre></div>
-<p>In the <code>(-&gt;)</code> instance of <code>Cartesian</code> <code>(△)</code> is defined as:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>(△)<span class="ot">::</span> (t <span class="ot">-&gt;</span> a) <span class="ot">-&gt;</span> (t <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> t <span class="ot">-&gt;</span> (a, b)</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>(f △ g) x <span class="ot">=</span> (f x, g x)</span></code></pre></div>
-<p>And where <code>apply</code> is introduced by the <code>Closed</code> category:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">Cartesian</span> k <span class="ot">=&gt;</span> <span class="dt">Closed</span> k <span class="kw">where</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  apply ::</span> ((a <span class="ot">-&gt;</span> b), a) <span class="ot">`k`</span> b</span></code></pre></div>
-<p>In the <code>(-&gt;)</code> instance of <code>Closed</code> <code>apply</code> is defined as</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">apply ::</span> (a <span class="ot">-&gt;</span> b, a) <span class="ot">-&gt;</span> b</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>apply (f, x) <span class="ot">=</span> f x</span></code></pre></div>
-<p>The function <code>absCCC</code> looks surprisingly similar to the <code>absCL</code> function defined above. The first two pattern matches are obviously equivalent as <code>i</code> and <code>id</code> are identical as well as <code>k y</code> and <code>const y</code>.</p>
-<p>But what about the third clause? We have:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- on the one hand: abstracting lambda-terms to combinator expresssions:</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>absCL (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> s (\x <span class="ot">-&gt;</span> p) (\x <span class="ot">-&gt;</span> q)</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- and on the other: abstracting lambda-terms to CCC expressions:</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>absCCC (\x <span class="ot">-&gt;</span> p q) <span class="ot">=</span> apply <span class="op">.</span> ((\x <span class="ot">-&gt;</span> p) △ (\x <span class="ot">-&gt;</span> q))</span></code></pre></div>
-<p>Are these two definitions equal?</p>
-<p>By eliminating all variables from the term <code>apply . ((\x -&gt; p) △ (\x -&gt; q))</code> we can write it as a combinator <code>s'</code> with variables <code>p, q, x</code>:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>s&#39; p q x <span class="ot">=</span> (apply <span class="op">.</span> (p △ q)) x</span></code></pre></div>
-<p>Now we can apply equational reasoning:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>s&#39; p q x <span class="ot">=</span> (apply <span class="op">.</span> (p △ q)) x   </span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>         <span class="ot">=</span> apply ((p △ q) x)     <span class="co">-- by definition of (.)</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>         <span class="ot">=</span> apply (p x, q x)      <span class="co">-- by definition of (△)</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>         <span class="ot">=</span> (p x) (q x)           <span class="co">-- by definition of apply        </span></span></code></pre></div>
-<p>This equals the definition of the <code>s</code> combinator:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>s p q x <span class="ot">=</span> (p x) (q x)</span></code></pre></div>
-<p>So we can conclude that the transformations from λ-calculus to SKI-combinators and CCC are equivalent.</p>
-<p>For me this was a new insight. But it seems that I was not the first to discover this: P.-L. Curien presents a much more elaborate proof of this correspondence in his classic paper <a href="https://core.ac.uk/download/pdf/82017242.pdf">Categorical Combinators</a>.
-See also <a href="http://pauillac.inria.fr/~huet/PUBLIC/cat.pdf">Cartesian Closed Categories and Lambda-Calculus</a>.</p>
-<h2 id="nexts-steps">Nexts steps</h2>
-<p>In my next blog post I will have a closer look at a CCC based execution model for a subset of Haskell.</p>
-]]></description>
-    <pubDate>Sun, 04 Apr 2021 00:00:00 UT</pubDate>
-    <guid>https://thma.github.io//posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html</guid>
     <dc:creator>Thomas Mahler</dc:creator>
 </item>
 
