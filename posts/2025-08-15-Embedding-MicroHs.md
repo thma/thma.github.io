@@ -258,9 +258,9 @@ So using the MicroHs evaluator as a runtime environment for combinator code gene
 
 ## Using an FFI Wrapper to call `mhseval` from Haskell
 
-My intial idea was, to use the benchmark suite used in [my earlier posts](#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction) and find out how it compares to the other implementations I did.
+My intial idea was to use the benchmark suite presented in [my earlier posts](#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction) to find out how MicroHs compares to my toy implementations.
 
-In my first attempt I encapsulated the generation of MicroHs code and calling `mhseval` like follows:
+As a first attempt I encapsulated the generation of MicroHs code and calling `mhseval` like follows:
 
 ```haskell
 microHsevalTest :: CL -> IO String
@@ -269,7 +269,7 @@ microHsevalTest expr = do
   readProcess "mhseval" [] prg
 ```
 
-This worked, but due to the overhead caused by executing `mhseval`as an external process I did not see any performance gains.
+This worked, but due to the overhead caused by executing `mhseval` as an external process I did not see any performance gains.
 
 So I came up with a new plan: let's write an FFI wrapper around `mhseval` to avoid spawning external processes.
 
@@ -285,10 +285,10 @@ main :: IO ()
 main = do
   let source = factorial
   let env = parseEnvironment source
-  let expr' = compileEta env
-  putStrLn $ "Factorial compiled to combinator expression:\n" ++ show expr'
+  let expr = compileEta env
+  putStrLn $ "Factorial compiled to combinator expression:\n" ++ show expr
 
-  let prg = toMhsPrg expr'
+  let prg = toMhsPrg expr
   putStrLn $ "The resulting MicroHs program: \n" ++ prg
   
   result <- withMhsContext $ \ctx ->
@@ -317,22 +317,72 @@ The function `run :: MhsContext -> MhsCombCode -> IO ()` takes a string containi
 
 In a scenario like a performance benchmark it is not a good idea to create a new context in the tight benchmark loop. For such use cases I have also provided functions for explicitely managing the context: `createMhsContext :: IO MhsContext` and `closeMhsContext :: MhsContext -> IO ()`.
 
-### A side note: using the FFI wrapper to compile and execute Haskell programs 
-
-MicroHs 
+## Benchmarking MhsEval against my toy runtimes.
 
 
+## Using the FFI wrapper to compile and execute Haskell programs 
+
+bisher habe ich in indiesem blog post nur die Teile von MiscroHs benutzt, die entweder direkt mit der Generierung von Combinator Code oder mit der Ausführung von Combinator Code befasst sind.
+
+But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way: 
+
+Let's assume we have a file `Example.hs` with the following code:
+
+```haskell
+module Example where
+
+fac :: Int -> Int
+fac 0 = 1
+fac n = n * fac(n - 1)
+
+main :: IO ()
+main = do
+  putStrLn "computing some factorials"
+  print $ map fac [0..10]
+```
+
+Now let's use MicroHs to compile and execute this code from some arbitry GHC compiled Haskell program:
+
+```haskell
+import           MhsEval (withMhsContext, eval, run)
+import qualified MicroHs.Main as MHS (main)
+import           System.Process (withArgs)
+
+main :: IO ()
+main = do
+  -- use microHs to compile 'Example.hs' to 'out.comb'
+  withArgs ["Example.hs"] MHS.main
+  -- read the program 'out.comb' into a string
+  prg' <- readFile "out.comb"
+  -- use the MicroHs runtime to execute the program
+  withMhsContext $ \ctx ->
+    run ctx prg'
+```
+
+The output of this program in GHCI looks like follows:
+
+```bash
+ghci> main
+computing some factorials
+[1,1,2,6,24,120,720,5040,40320,362880,3628800]
+```
+
+Ok, this works as expected but it feels a bit clumsy to send the compiler output to a file and then read in that file to be able to execute it.
+In order to improve this sketchy solution I integrated the MhsEval wrapper more tightly into the mhs compiler by implementing the `mhs -r` option also for GHC based compiles. With this goody the compile and execute cycle can be unified in a single command, as shown in the following snippet:
+
+```haskell
+import qualified MicroHs.Main as MHS (main)
+import           System.Process (withArgs)
+
+main :: IO ()
+main = do
+  -- use MicroHs to compile AND execute the 'Example.hs' program
+  withArgs ["-r", "Example.hs"] MHS.main
+```
 
 
 
-## storyline
 
-
-
-
-- microbenchmarking MhsEval against my toy runtimes.
-- using the FFI wrapper to provide an implementation for "MHS -r Example.hs"
-- second pull request the FFI wrapper + MHS -r
 
 
 
