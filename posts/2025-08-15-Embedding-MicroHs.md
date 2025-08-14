@@ -317,12 +317,81 @@ The function `run :: MhsContext -> MhsCombCode -> IO ()` takes a string containi
 
 In a scenario like a performance benchmark it is not a good idea to create a new context in the tight benchmark loop. For such use cases I have also provided functions for explicitely managing the context: `createMhsContext :: IO MhsContext` and `closeMhsContext :: MhsContext -> IO ()`.
 
-## Benchmarking MhsEval against my toy runtimes.
+## Benchmarking MhsEval against my toy runtime.
 
+In my last blog post on this matter I focussed on comparing different bracket abstraction algorithms.
+
+|testcase|HHI-Reducer|MicroHs|Haskell native| 
+|----|----|----|----|
+|fib 37|8.641 s|6.296 s|727.3 ms|
+|ackermann 3 9 |4.170 s|1.575 s| 105.6 ms|
+|tak 18 6 3|1.225 ms|1.101 ms|42.01 μs|
+
+<--
+benchmarking ackermann HHI-Reduce
+time                 4.170 s    (4.148 s .. 4.180 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 4.166 s    (4.158 s .. 4.169 s)
+std dev              5.893 ms   (1.075 ms .. 8.071 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+benchmarking ackermann MicroHs
+time                 1.575 s    (1.525 s .. 1.605 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 1.595 s    (1.581 s .. 1.621 s)
+std dev              25.03 ms   (1.942 ms .. 30.98 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+benchmarking ackermann Native
+time                 105.6 ms   (105.4 ms .. 105.8 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 105.6 ms   (105.5 ms .. 105.7 ms)
+std dev              196.7 μs   (106.3 μs .. 343.3 μs)
+
+benchmarking fibonacci HHI-Eta
+time                 8.641 s    (8.556 s .. 8.800 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 8.597 s    (8.580 s .. 8.622 s)
+std dev              25.16 ms   (2.640 ms .. 31.99 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+benchmarking fibonacci MicroHs
+time                 6.296 s    (6.286 s .. 6.310 s)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 6.302 s    (6.300 s .. 6.305 s)
+std dev              3.384 ms   (1.956 ms .. 4.782 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+benchmarking fibonacci Native
+time                 727.3 ms   (722.4 ms .. 732.1 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 729.4 ms   (728.2 ms .. 730.7 ms)
+std dev              1.555 ms   (581.8 μs .. 2.052 ms)
+variance introduced by outliers: 19% (moderately inflated)
+
+benchmarking tak       HHI-Eta
+time                 1.225 ms   (1.220 ms .. 1.230 ms)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 1.221 ms   (1.219 ms .. 1.224 ms)
+std dev              8.311 μs   (6.513 μs .. 10.89 μs)
+
+benchmarking tak       MicroHs
+time                 1.101 ms   (1.080 ms .. 1.125 ms)
+                     0.997 R²   (0.996 R² .. 0.999 R²)
+mean                 1.077 ms   (1.067 ms .. 1.092 ms)
+std dev              43.67 μs   (36.26 μs .. 49.96 μs)
+variance introduced by outliers: 29% (moderately inflated)
+
+benchmarking tak       Native
+time                 42.01 μs   (41.90 μs .. 42.11 μs)
+                     1.000 R²   (1.000 R² .. 1.000 R²)
+mean                 42.00 μs   (41.87 μs .. 42.12 μs)
+std dev              417.9 ns   (339.7 ns .. 505.4 ns)
+-->
 
 ## Using the FFI wrapper to compile and execute Haskell programs 
 
-bisher habe ich in indiesem blog post nur die Teile von MiscroHs benutzt, die entweder direkt mit der Generierung von Combinator Code oder mit der Ausführung von Combinator Code befasst sind.
+In this blog post, I have so far only used the parts of MiscroHs that deal either directly with the generation of Combinator code or with the execution of Combinator code.
 
 But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way: 
 
@@ -379,11 +448,6 @@ main = do
   -- use MicroHs to compile AND execute the 'Example.hs' program
   withArgs ["-r", "Example.hs"] MHS.main
 ```
-
-
-
-
-
 
 
 ## Appendix: my earlier posts on combinatory logic and graph-reduction
