@@ -320,75 +320,121 @@ In a scenario like a performance benchmark it is not a good idea to create a new
 
 In my [last blog post on this matter](https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html) I focussed on comparing different bracket abstraction algorithms. This time I will have a closer look to execution speed of graph-reduction based approaches versus GHC compiled code.
 
+I will consider three execution runtimes: 
 
+- The HHI-Reducer. This is the fastest of my graph-reduction implementations. 
+- The MicroHs Runtime mhseval 
+- The GHC Runtime
 
-|testcase|HHI-Reducer|MicroHs|Haskell native| 
+As I am focussing on backend performance I will not vary the compilation algorithm. I will use the `compileEta` algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)
+
+I will benchmark execution of the following programs of my toy language:
+
+### fibonacci
+
+```haskell
+fibonacci = [r| 
+  fib  = y(λf n. if (leq n 1) 1 (+ (f (- n 1)) (f (- n 2))))
+  main = fib 37
+|]
+````
+
+compiled by `compileEta` to:
+
+```haskell
+Y(R 1(B C(B(S(C LEQ 1))(S(B S(B(B ADD)(R(C SUB 1) B)))(R(C SUB 2) B))))) 37
+````
+
+### ackermann
+
+```haskell
+ackermann = [r|
+  ack  = y(λf n m. if (eql n 0) (+ m 1) (if (eql m 0) (f (- n 1) 1) (f (- n 1) (f n (- m 1)))))
+  main = ack 3 9
+|]
+````
+
+compiled to:
+
+```haskell
+Y(B(R(C ADD 1))(B(B S)(B(S(B B(R 0 EQL)))(S(B S(B(B C)(B(B(S(C EQL 0)))(S(B S(B(B B)(R(R 1 SUB) B)))(B(R(C SUB 1))(B B))))))(B(R 1)(R(R 1 SUB) B)))))) 3 9
+````
+
+### tak
+
+```haskell
+tak = [r| 
+  tak  = y(λf x y z. (if (geq y x) z (f (f (- x 1) y z) (f (- y 1) z x) (f (- z 1) x y ))))
+  main = tak 18 6 3
+|]
+````
+
+compiled to:
+
+```haskell
+Y(B(B(R I))(B(B(B S))(B(S(B S(B(B B)(C GEQ))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B B))(R(R 1 SUB) B)))))(B C(B(B C)(R(R 1 SUB) B)))))))(B(B C)(B C(R(C SUB 1) B))))))) 18 6 3
+````
+
+In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC:
+
+```haskell
+fib  = fix (\f n -> 
+  if n <= 1 
+    then 1 
+    else f (n-1) + f (n - 2))
+
+ack  = fix (\f n m ->
+  if n == 0
+    then m + 1
+    else (if m == 0
+      then f (n-1) 1
+      else f (n-1) (f n (m-1))))
+
+tak  = fix (\f x y z -> 
+  if y >= x 
+    then z 
+    else f (f (x-1) y z) (f (y-1) z x) (f (z-1) x y ))
+```
+
+Benchmarking these programs with the [Criterion micro-benchmarking suite](https://hackage.haskell.org/package/criterion) yields the following results:
+
+|program|HHI-Reducer|MicroHs|Haskell native| 
 |----|----|----|----|
 |fib 37|8.641 s|6.296 s|727.3 ms|
 |ackermann 3 9 |4.170 s|1.575 s| 105.6 ms|
 |tak 18 6 3|1.225 ms|1.101 ms|42.01 μs|
 
-<--
-benchmarking ackermann HHI-Reduce
-time                 4.170 s    (4.148 s .. 4.180 s)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 4.166 s    (4.158 s .. 4.169 s)
-std dev              5.893 ms   (1.075 ms .. 8.071 ms)
-variance introduced by outliers: 19% (moderately inflated)
+### Interpretation of the results
 
-benchmarking ackermann MicroHs
-time                 1.575 s    (1.525 s .. 1.605 s)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 1.595 s    (1.581 s .. 1.621 s)
-std dev              25.03 ms   (1.942 ms .. 30.98 ms)
-variance introduced by outliers: 19% (moderately inflated)
+The numbers show a clear hierarchy: MicroHs consistently outperforms the baseline HHI-Reducer, but native GHC code remains an order of magnitude faster. There is some variation between the different programs. For example, MicroHs can handle the ack-function significantly better (factor 2.6) than the HHI-Reducer. For the tak-function on the other hand the factor is just 1.1. A complete overview is given in the following table:
 
-benchmarking ackermann Native
-time                 105.6 ms   (105.4 ms .. 105.8 ms)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 105.6 ms   (105.5 ms .. 105.7 ms)
-std dev              196.7 μs   (106.3 μs .. 343.3 μs)
+|factor in direct comparison|	fib	| ack| tak|
+|----|----|----|----|
+|MicroHs vs HHI-Reducer|	1.4	|2.6	|1.1 |
+|GHC native vs MicroHs|	8.7	|14.9	|26.2 |
 
-benchmarking fibonacci HHI-Eta
-time                 8.641 s    (8.556 s .. 8.800 s)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 8.597 s    (8.580 s .. 8.622 s)
-std dev              25.16 ms   (2.640 ms .. 31.99 ms)
-variance introduced by outliers: 19% (moderately inflated)
+Before doing this benchmarking exercise I had two expectations:
 
-benchmarking fibonacci MicroHs
-time                 6.296 s    (6.286 s .. 6.310 s)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 6.302 s    (6.300 s .. 6.305 s)
-std dev              3.384 ms   (1.956 ms .. 4.782 ms)
-variance introduced by outliers: 19% (moderately inflated)
+- MicroHs will outperform my toy reducers. 
+- GHC will be about ten times faster then MicroHs. 
 
-benchmarking fibonacci Native
-time                 727.3 ms   (722.4 ms .. 732.1 ms)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 729.4 ms   (728.2 ms .. 730.7 ms)
-std dev              1.555 ms   (581.8 μs .. 2.052 ms)
-variance introduced by outliers: 19% (moderately inflated)
+My first expection was met, however for a 3-argument function like `tak` MicroHs is only 10% faster.
 
-benchmarking tak       HHI-Eta
-time                 1.225 ms   (1.220 ms .. 1.230 ms)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 1.221 ms   (1.219 ms .. 1.224 ms)
-std dev              8.311 μs   (6.513 μs .. 10.89 μs)
+The second expectation was clearly not met for the `tak`-function!
+In my [post on optimizing bracket abstraction](https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html) I have demonstrated how the code size of classic abstraction algorithms will grow quadratically with the number of variables of a function. In that post I have also shown how advanced approaches like [Kiselyovs Bulk-Combinators](https://okmij.org/ftp/tagless-final/ski.pdf) can significantly improve this behaviour.
 
-benchmarking tak       MicroHs
-time                 1.101 ms   (1.080 ms .. 1.125 ms)
-                     0.997 R²   (0.996 R² .. 0.999 R²)
-mean                 1.077 ms   (1.067 ms .. 1.092 ms)
-std dev              43.67 μs   (36.26 μs .. 49.96 μs)
-variance introduced by outliers: 29% (moderately inflated)
+So evaluating if Bulk-combinators could improve performance of MicroHs would be an interesting topic.
 
-benchmarking tak       Native
-time                 42.01 μs   (41.90 μs .. 42.11 μs)
-                     1.000 R²   (1.000 R² .. 1.000 R²)
-mean                 42.00 μs   (41.87 μs .. 42.12 μs)
-std dev              417.9 ns   (339.7 ns .. 505.4 ns)
--->
+Looking at the compilation output of the `fib 37` program, there seems to very little room for improvement as the generated code is already quite dense:
+```haskell
+Y(R 1(B C(B(S(C LEQ 1))(S(B S(B(B ADD)(R(C SUB 1) B)))(R(C SUB 2) B))))) 37
+````
+
+For such programs we see that the GHC equivalent still runs 8.7 times faster. So it would be great if the reductions per seconds rate of `mhseval` could be improved.
+
+
+
+
 
 ## Using the FFI wrapper to compile and execute Haskell programs 
 
@@ -462,8 +508,6 @@ The work also highlights the remarkable achievement of the MicroHs project itsel
 The presented FFI wrapper makes it possible to embed the complete MicroHs compiler and runtime within any GHC-compiled Haskell program. This opens up interesting possibilities for embedded haskell scripting and runtime code generation.
 
 For anyone interested in compiler implementation, functional programming foundations, or combinatory logic, MicroHs provides an excellent playground for experimentation. The ability to embed it within larger Haskell applications makes it particularly valuable for research and teaching purposes.
-
-
 
 
 ## Appendix: my earlier posts on combinatory logic and graph-reduction

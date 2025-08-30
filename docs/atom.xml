@@ -6,10 +6,399 @@
     <id>https://thma.github.io//atom.xml</id>
     <author>
         <name>Thomas Mahler</name>
+        
         <email>Thomas.Mahler@ista.com</email>
+        
     </author>
-    <updated>2024-12-05T00:00:00Z</updated>
+    <updated>2025-08-15T00:00:00Z</updated>
     <entry>
+    <title>Embedding MicroHs</title>
+    <link href="https://thma.github.io//posts/2025-08-15-Embedding-MicroHs.html" />
+    <id>https://thma.github.io//posts/2025-08-15-Embedding-MicroHs.html</id>
+    <published>2025-08-15T00:00:00Z</published>
+    <updated>2025-08-15T00:00:00Z</updated>
+    <summary type="html"><![CDATA[<div class="info">
+    <em>Posted on August 15, 2025
+    
+        by Thomas Mahler
+    </em><br/><br/>
+</div>
+
+<p><a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
+<h2 id="abstract">Abstract</h2>
+<p>This post shows how to embed Lennart Augustsson’s MicroHs—a compact, bootstrappable Haskell based on combinatory logic—as a backend for an experimental compiler. It covers generating MicroHs‑compatible combinator expressions, emitting the out.comb format, and executing the result with the MicroHs runtime. Benchmarks demonstrate substantial speedups over a custom graph‑reduction engine. The post also outlines contributions that expose MicroHs as an embeddable library and FFI wrapper, enabling compilation and execution from GHC programs and making embedded graph reduction practical in larger applications.</p>
+<h2 id="introduction">Introduction</h2>
+<p>Attentive readers of my blog will have noticed that I am a big fan of combinatory logic and graph reduction in the implementation of functional languages.</p>
+<p>Some time ago, I became aware of <a href="https://github.com/augustss/MicroHs?tab=readme-ov-file#micro-haskell">Lennart Augustsson’s MicroHs project</a>, which provides an alternative Haskell compiler that targets a runtime environment based on combinatory logic and graph reduction.</p>
+<p>MicroHs is an awesome project for several reasons:</p>
+<ul>
+<li><p>It demonstrates how a complex high-level language like Haskell can be translated and executed efficiently using bracket abstraction, Scott encoding, combinatory logic and a graph reduction runtime.</p></li>
+<li><p>It outlines an approach for bootstrapping a Haskell compiler using only a C compiler as a prerequisite. This represents a significant step for bootstrapping the GHC compiler in the sense of the <a href="https://www.bootstrappable.org/projects.html">Bootstrappable project</a>.</p></li>
+<li><p>The entire codebase remains compact and “hackable”, making it an ideal textbook example for a functional language compiler.</p></li>
+</ul>
+<p>While studying the MicroHs codebase I noticed that it uses compilation techniques, combinatory logic expressions and graph reduction mechanics that are quite close to the concepts that I presented in <a href="#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">some of my previous blog posts on this topic</a>. I was particularly impressed by the MicroHs graph-reduction runtime implemented in C.</p>
+<p>So I came up with the idea of adjusting my toy compilation system to generate object code that can be executed with the MicroHs runtime system.</p>
+<p>In this blog post I’ll explain what I did to achieve this goal. I’ll also explain briefly the two pull requests that I added to MicroHs, which allow to embed MicroHs into Haskell code copiled with GHC.</p>
+<h2 id="using-the-microhs-runtime-as-a-backend-for-my-toy-compiler">Using the MicroHs Runtime as a backend for my toy compiler</h2>
+<p>MicroHs is using a set of combinators that is quite close to those used in my toy language implementation.</p>
+<p>The only difference I noticed was in the handling of conditional expressions. My toy compiler was using a dedicated <code>IF</code> combinator, whereas MicroHs is providing a much more generic and flexible system that makes clever use of combinators <code>A</code> and <code>K</code>.</p>
+<p>This gave me confidence that it shouldn’t be too difficult to use the MicroHs runtime as a target to my compiler.</p>
+<h3 id="getting-rid-of-the-if-combinator">Getting rid of the IF combinator</h3>
+<p>As my toy language is just dealing with functions over integers I tried to keep thngs as easy as possible and thus modelled <code>True</code> as <code>1</code> and <code>False</code> as <code>0</code>.
+So for example in the <a href="https://github.com/thma/lambda-ski/blob/main/src/HhiReducer.hs">HhiReducer</a> the equality test <code>eql</code> is defined as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ot">eql ::</span> (<span class="dt">Eq</span> a, <span class="dt">Num</span> p) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> p</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>eql n m <span class="ot">=</span> <span class="kw">if</span> n <span class="op">==</span> m <span class="kw">then</span> <span class="dv">1</span> <span class="kw">else</span> <span class="dv">0</span></span></code></pre></div>
+<p>The <code>IF</code>-Combinator takes three arguments <code>condition</code>, <code>thenExpr</code> and <code>elseExpr</code>. The semantics is simple: if <code>condition</code> evaluates to <code>1</code>, <code>thenExpr</code> is evaluated alse <code>elseExpr</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">CFun</span> (\(<span class="dt">CInt</span> condition) <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \thenExpr <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \elseExpr <span class="ot">-&gt;</span> </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">if</span> condition <span class="op">==</span> <span class="dv">1</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="kw">then</span> thenExpr </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">else</span> elseExpr)</span></code></pre></div>
+<p>MicroHs is encoding boolean values quite differently:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">True</span> <span class="ot">=</span> <span class="dt">A</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">False</span> <span class="ot">=</span> <span class="dt">K</span></span></code></pre></div>
+<p>Where <code>A</code> and <code>K</code> are Combinators defined as follows:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="dt">K</span> x y <span class="ot">=</span> x </span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="dt">A</span> x y <span class="ot">=</span> y</span></code></pre></div>
+<p>So in this Encoding <code>True</code> and <code>False</code> can be used as selector functions to either pick the <code>thenExpr</code> or the <code>elseExpr</code> for evaluation.</p>
+<p>We can apply this feature to eliminate the <code>IF</code>-combinator. We will achieve this by using a new function <code>desugarIf</code> before performing bracket abstraction. This function will desugar <code>If</code>-expressions to Scott encoded boolean applications. It will detect sourcecode patterns <code>if condition thenExpr elseExpr</code> and transforms it to: <code>condition elseExpr thenExpr</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">desugarIf ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>desugarIf (((<span class="dt">Var</span> <span class="st">&quot;if&quot;</span> <span class="ot">`App`</span> condition) <span class="ot">`App`</span> thenExpr) <span class="ot">`App`</span> elseExpr) <span class="ot">=</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  (desugarIf condition <span class="ot">`App`</span> desugarIf elseExpr) <span class="ot">`App`</span> desugarIf thenExpr</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>desugarIf (<span class="dt">App</span> e1 e2) <span class="ot">=</span> <span class="dt">App</span> (desugarIf e1) (desugarIf e2)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>desugarIf (<span class="dt">Lam</span> x e) <span class="ot">=</span> <span class="dt">Lam</span> x (desugarIf e)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>desugarIf expr <span class="ot">=</span> expr  <span class="co">-- Var, Int remain unchanged</span></span></code></pre></div>
+<p>When <code>condition</code> evaluates to <code>True</code> (i.e. <code>A</code>) the second argument (<code>thenExpr</code>) will be selected.
+When <code>condition</code>evaluates to <code>False</code> (i.e. <code>K</code>) the first argument (<code>elseExpr</code>) will be selected.</p>
+<p>To make this work we will have to change all comparison functions to return <code>A</code>and <code>K</code>, like in the following snippet from the HhiReducer:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">eql ::</span> (<span class="dt">Eq</span> a) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>eql n m <span class="ot">=</span> <span class="kw">if</span> n <span class="op">==</span> m <span class="kw">then</span> trueCExpr <span class="kw">else</span> falseCExpr</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Helper functions for Scott-encoded booleans</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="ot">trueCExpr ::</span> <span class="dt">CExpr</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>trueCExpr <span class="ot">=</span> link primitives (translate (<span class="dt">Com</span> <span class="dt">A</span>))</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="ot">falseCExpr ::</span> <span class="dt">CExpr</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>falseCExpr <span class="ot">=</span> link primitives (translate (<span class="dt">Com</span> <span class="dt">K</span>))</span></code></pre></div>
+<p>Let’s have a closer look how this can be very handy when compiling conditional expressions to efficient code. Let’s illustrate this with an example of my improved toy compiler. Let’s say we have a very simple <code>main</code>-expression:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">Int</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">if</span> (eql <span class="dv">0</span> <span class="dv">1</span>) <span class="dv">23</span> <span class="dv">42</span></span></code></pre></div>
+<p>With the new desugaring this will compiled to the following combinator expression. Please note that <code>thenExpr</code> and <code>elseExpr</code> have been swapped by <code>desugarIf</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">1</span> <span class="dv">42</span> <span class="dv">23</span></span></code></pre></div>
+<p>Now let`s have a look at the combinator-reduction of this expression:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">1</span> <span class="dv">42</span> <span class="dv">23</span> </span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="dt">K</span> <span class="dv">42</span> <span class="dv">23</span><span class="op">.</span>       <span class="co">-- by reducing EQL 0 1 to K (representing &#39;False&#39;)</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="dv">42</span>             <span class="co">-- by reducing K x y to x</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- likewise for the &#39;True&#39; case:</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">0</span> <span class="dv">42</span> <span class="dv">23</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="dt">A</span> <span class="dv">42</span> <span class="dv">23</span><span class="op">.</span>       <span class="co">-- by reducing EQL 0 0 to A (representing &#39;True&#39;)</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="dv">23</span>             <span class="co">-- by reducing A x y to y</span></span></code></pre></div>
+<h3 id="producing-microhs-compatible-combinator-code-from-my-toy-compiler">producing MicroHs compatible combinator code from my toy compiler</h3>
+<p>After fixing the incompatibility in the handling of conditional expressions there is is only one task left: We’ll have to translate the combinator expressions generated by my compiler to a valid MicroHs combinator program. This is done in the <a href="https://github.com/thma/lambda-ski/blob/main/src/MicroHsExp.hs">MicroHsExp</a> module.</p>
+<p>The first step is to map from my <code>CLTerm.CL</code>-terms to <code>MicroHs.Exp</code>-terms.
+By looking at the type definitions we can see that the mapping will be straightforward:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- CLTerm.CL:</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">CL</span> <span class="ot">=</span> </span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Com</span> <span class="dt">Combinator</span> </span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">INT</span> <span class="dt">Integer</span> </span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">CL</span> <span class="op">:@</span> <span class="dt">CL</span> </span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Data</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co">-- MicroHs.Exp:</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Exp</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">Ident</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">App</span> <span class="dt">Exp</span> <span class="dt">Exp</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lam</span> <span class="dt">Ident</span> <span class="dt">Exp</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lit</span> <span class="dt">Lit</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>)  </span></code></pre></div>
+<p>The <code>Exp</code> data type is used to store desugared λ-Terms as well as combinator terms. That is the reason why it allows free variables (<code>Var</code>) and λ-terms (<code>Lam</code>). But after running bracket abstraction over such a term it will only <code>App</code> and <code>Lit</code> constructors.</p>
+<p>With this knowledge we can define a <code>toMhsExp :: CL -&gt; Exp</code> function:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">CLTerm</span> (<span class="dt">CL</span>(..))</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.Exp</span> (<span class="dt">Exp</span>(..))</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.Expr</span> (<span class="dt">Lit</span>(..))</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ot">toMhsExp ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">Exp</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>toMhsExp (<span class="dt">Com</span> c) <span class="ot">=</span> <span class="dt">Lit</span> (<span class="dt">LPrim</span> (combToMhscomb c))</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>toMhsExp (<span class="dt">INT</span> i) <span class="ot">=</span> <span class="dt">Lit</span> (<span class="dt">LInt</span> (<span class="fu">fromIntegral</span> i))     <span class="co">-- LInt only works with Int</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>toMhsExp (t <span class="op">:@</span> u) <span class="ot">=</span> <span class="dt">App</span> (toMhsExp t) (toMhsExp u)</span></code></pre></div>
+<p>The interesting part here is that both integers and combinators are treated as <code>Lit</code> instances with specific constructors <code>LInt</code> and <code>LPrim</code>.</p>
+<p>In order to be able to import MicroHs code I contributed a PR which exposes the MicroHs source code as a library in the <a href="https://github.com/augustss/MicroHs/blob/master/MicroHs.cabal">MicroHs.cabal</a> file. Now we can simply embed the MicroHs compiler (or parts of it) in any Haskell program by adding <code>MicroHs</code>as a dependency to our <code>.cabal</code> or <code>package.yaml</code> files.</p>
+<p>Mapping the combinators and primops of my compiler to MicroHs can simply be achieved by <code>show</code>, only for a few arithmetic and comparison primops we need specific translations as MicroHs uses <a href="https://github.com/augustss/MicroHs/blob/master/ghc/PrimTable.hs#L32">other names for them</a>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">CLTerm</span> (<span class="dt">Combinator</span>(..))</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ot">combToMhscomb ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">ADD</span> <span class="ot">=</span> <span class="st">&quot;+&quot;</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">SUB</span> <span class="ot">=</span> <span class="st">&quot;-&quot;</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">MUL</span> <span class="ot">=</span> <span class="st">&quot;*&quot;</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">DIV</span> <span class="ot">=</span> <span class="st">&quot;/&quot;</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">REM</span> <span class="ot">=</span> <span class="st">&quot;rem&quot;</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">EQL</span> <span class="ot">=</span> <span class="st">&quot;==&quot;</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">GEQ</span> <span class="ot">=</span> <span class="st">&quot;&gt;=&quot;</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>combToMhscomb c <span class="ot">=</span> <span class="fu">show</span> c</span></code></pre></div>
+<h3 id="translating-my-combinator-expressions-into-mhs-out.comb-format">translating my combinator expressions into MHS out.comb format</h3>
+<p>The final step of producing a valid MicroHs <code>out.comb</code> file is even simpler.
+MicroHs defines a function <code>toStringCMdl</code>, which takes a list of definitions (i.e. all functions, expressions and CAFs defined in a haskell program) and an expression representing the <code>main</code>-expression of a Haskell program as input. The result is a tuple with the number of definitions, a list of all foreign export identifiers, and the program as a string. This last element of the tuple will contain the contain the actual combinator code, i.e. the contents of an <code>out.comb</code>file.</p>
+<p>Even when compiling a program with many top-level definitions my toy compiler just returns the compiled <code>main</code> expression (with all calls to other toplevel definitions expanded to combinator code). As we we don’t have any top-level definitions left after compilation we just hand over an empty list</p>
+<p>With this knowledge we can can compile our <code>CL</code>-term to a valid MicroHs program with very little effort:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.ExpPrint</span> (toStringCMdl)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ot">toMhsPrg ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>toMhsPrg cl <span class="ot">=</span> </span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    definitions <span class="ot">=</span> [] </span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    (n, exps, prg) <span class="ot">=</span> toStringCMdl (definitions, toMhsExp cl)</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>   <span class="kw">in</span> prg</span></code></pre></div>
+<h3 id="a-first-test-drive">A first test drive</h3>
+<p>Now it’s time for a first test drive of our solution:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">factorial ::</span> <span class="dt">String</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>factorial <span class="ot">=</span> [r| </span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  fact = y(\f n. if (eql n 0) 1 (* n (f (- n 1))))</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  main = fact 10</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>|]</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> source <span class="ot">=</span> factorial</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>      env <span class="ot">=</span> parseEnvironment source</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>      expr&#39; <span class="ot">=</span> compileEta env<span class="op">.</span>  <span class="co">-- compileEta is a good default for dense combinator code</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>      prg <span class="ot">=</span> toMhsPrg expr&#39;     <span class="co">-- use MicroHs.ExpPrint.toStringCMdl to produce MicroHs code    </span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Factorial compiled to combinator expression:\n&quot;</span> <span class="op">++</span> <span class="fu">show</span> expr&#39;</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;The resulting MicroHs program: \n&quot;</span> <span class="op">++</span> prg</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">writeFile</span> <span class="st">&quot;out.comb&quot;</span> prg<span class="op">.</span>    <span class="co">-- out.comb is the default file name for code executed by mhseval</span></span></code></pre></div>
+<pre><code>ghci&gt; main
+Factorial compiled to combinator expression: 
+Y(R 1(B C(B(S(C EQL 0))(B(S MUL)(R(C SUB 1) B))))) 10
+The resulting MicroHs program: 
+v8.2
+0
+Y R #1 @B C @B S C == @#0 @@@B S * @@R C - @#1 @@B @@@@@@#10 @ }</code></pre>
+<p>Please note that <code>Int</code> literals are encoded with a leading <code>#</code>in MicroHs code format, like <code>#0</code>, <code>#1</code>and <code>#10</code> in the program above.</p>
+<p>Now we use the MicroHs evaluator <code>mhseval</code> to run this program written to the file <code>out.comb</code>:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span><span class="op">&gt;</span> mhseval </span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co">#3628800</span></span></code></pre></div>
+<p>I think this is quite impressive: MicroHs knows all the combinators my toy compiler is emmitting, including the <code>Y</code>-combinator
+and the reduction works in the expected way and produces the correct result!</p>
+<p>So using the MicroHs evaluator as a runtime environment for combinator code generated by other compilers seems quite feasible!</p>
+<h2 id="using-an-ffi-wrapper-to-call-mhseval-from-haskell">Using an FFI Wrapper to call <code>mhseval</code> from Haskell</h2>
+<p>My intial idea was to use the benchmark suite presented in <a href="#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">my earlier posts</a> to find out how MicroHs compares to my toy implementations.</p>
+<p>As a first attempt I encapsulated the generation of MicroHs code and calling <code>mhseval</code> like follows:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">microHsevalTest ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">String</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>microHsevalTest expr <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> prg <span class="ot">=</span> toMhsPrg expr</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  readProcess <span class="st">&quot;mhseval&quot;</span> [] prg</span></code></pre></div>
+<p>This worked, but due to the overhead caused by executing <code>mhseval</code> as an external process I did not see any performance gains.</p>
+<p>So I came up with a new plan: let’s write an FFI wrapper around <code>mhseval</code> to avoid spawning external processes.</p>
+<p>I won’t go into the details of this wrapper. The good news is that the respective PR was accepted and is now part of the official MicroHs codebase.
+If you are interested you can study the code of the <code>C</code>-wrapper here: <a href="https://github.com/augustss/MicroHs/blob/master/src/runtime/mhseval.h">mhseval.h</a> and <a href="https://github.com/augustss/MicroHs/blob/master/src/runtime/mhseval.c">mhseval.c</a>.
+The Haskell wrapper is in <a href="https://github.com/augustss/MicroHs/blob/master/ghc/MhsEval.hs">MhsEval.hs</a>.</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHsExp</span> (toMhsPrg)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MhsEval</span> (withMhsContext, eval, run)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> source <span class="ot">=</span> factorial</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> env <span class="ot">=</span> parseEnvironment source</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> expr <span class="ot">=</span> compileEta env</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Factorial compiled to combinator expression:\n&quot;</span> <span class="op">++</span> <span class="fu">show</span> expr</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> prg <span class="ot">=</span> toMhsPrg expr</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;The resulting MicroHs program: \n&quot;</span> <span class="op">++</span> prg</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>  result <span class="ot">&lt;-</span> withMhsContext <span class="op">$</span> \ctx <span class="ot">-&gt;</span></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    eval ctx prg</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Result: &quot;</span> <span class="op">++</span> result</span></code></pre></div>
+<p>The resulting output does not bring any surprises:</p>
+<pre><code>ghci&gt; main
+Factorial compiled to combinator expression: 
+Y(R 1(B C(B(S(C EQL 0))(B(S MUL)(R(C SUB 1) B))))) 10
+The resulting MicroHs program: 
+v8.2
+0
+Y R #1 @B C @B S C == @#0 @@@B S * @@R C - @#1 @@B @@@@@@#10 @ }
+Result: #3628800</code></pre>
+<p>The function <code>withMhsContext :: (MhsContext -&gt; IO a) -&gt; IO a</code> executes an action (like <code>eval</code> or <code>run</code>) with a MicroHs context. It initializes a context, runs the action, and cleans up afterwards. It is useful for one-off evaluations without needing to manage the context manually.</p>
+<p>The function <code>eval :: MhsContext -&gt; MhsCombCode -&gt; IO String</code> takes a string containing MicroHs combinator code, evaluates it, and returns the result as a string. If evaluation fails, it throws an <code>MhsEvalError</code>. The type <code>MhsCombCode</code> is just an alias for <code>String</code>. This currently works properly only for results of type <code>Int</code>.</p>
+<p>The function <code>run :: MhsContext -&gt; MhsCombCode -&gt; IO ()</code> takes a string containing MicroHs combinator code, and runs it without returning any result.</p>
+<p>In a scenario like a performance benchmark it is not a good idea to create a new context in the tight benchmark loop. For such use cases I have also provided functions for explicitely managing the context: <code>createMhsContext :: IO MhsContext</code> and <code>closeMhsContext :: MhsContext -&gt; IO ()</code>.</p>
+<h2 id="benchmarking-mhseval-against-my-toy-runtime.">Benchmarking MhsEval against my toy runtime.</h2>
+<p>In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">last blog post on this matter</a> I focussed on comparing different bracket abstraction algorithms. This time I will have a closer look to execution speed of graph-reduction based approaches versus GHC compiled code.</p>
+<p>I will consider three execution runtimes:</p>
+<ul>
+<li>The HHI-Reducer. This is the fastest of my graph-reduction implementations.</li>
+<li>The MicroHs Runtime mhseval</li>
+<li>The GHC Runtime</li>
+</ul>
+<p>As I am focussing on backend performance I will not vary the compilation algorithm. I will use the <code>compileEta</code> algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)</p>
+<p>I will benchmark execution of the following programs of my toy language:</p>
+<h3 id="fibonacci">fibonacci</h3>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>fibonacci <span class="ot">=</span> [r| </span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  fib  = y(λf n. if (leq n 1) 1 (+ (f (- n 1)) (f (- n 2))))</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  main = fib 37</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>|]</span></code></pre></div>
+<p>compiled by <code>compileEta</code> to:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">R</span> <span class="dv">1</span>(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">C</span> <span class="dt">LEQ</span> <span class="dv">1</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">ADD</span>)(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>)))(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">2</span>) <span class="dt">B</span>))))) <span class="dv">37</span></span></code></pre></div>
+<h3 id="ackermann">ackermann</h3>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>ackermann <span class="ot">=</span> [r|</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  ack  = y(λf n m. if (eql n 0) (+ m 1) (if (eql m 0) (f (- n 1) 1) (f (- n 1) (f n (- m 1)))))</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  main = ack 3 9</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>|]</span></code></pre></div>
+<p>compiled to:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">B</span>(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">ADD</span> <span class="dv">1</span>))(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>)(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">B</span>(<span class="dt">R</span> <span class="dv">0</span> <span class="dt">EQL</span>)))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">C</span>)(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">C</span> <span class="dt">EQL</span> <span class="dv">0</span>)))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">B</span>)(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))(<span class="dt">B</span>(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>))(<span class="dt">B</span> <span class="dt">B</span>))))))(<span class="dt">B</span>(<span class="dt">R</span> <span class="dv">1</span>)(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))))) <span class="dv">3</span> <span class="dv">9</span></span></code></pre></div>
+<h3 id="tak">tak</h3>
+<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>tak <span class="ot">=</span> [r| </span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  tak  = y(λf x y z. (if (geq y x) z (f (f (- x 1) y z) (f (- y 1) z x) (f (- z 1) x y ))))</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  main = tak 18 6 3</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>|]</span></code></pre></div>
+<p>compiled to:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">R</span> <span class="dt">I</span>))(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">B</span>)(<span class="dt">C</span> <span class="dt">GEQ</span>))))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>)(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>)(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">B</span>(<span class="dt">B</span> <span class="dt">B</span> <span class="dt">B</span>))(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))))(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">C</span>)(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))))))(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">C</span>)(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>))))))) <span class="dv">18</span> <span class="dv">6</span> <span class="dv">3</span></span></code></pre></div>
+<p>In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC:</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>fib  <span class="ot">=</span> fix (\f n <span class="ot">-&gt;</span> </span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">if</span> n <span class="op">&lt;=</span> <span class="dv">1</span> </span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">then</span> <span class="dv">1</span> </span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">else</span> f (n<span class="op">-</span><span class="dv">1</span>) <span class="op">+</span> f (n <span class="op">-</span> <span class="dv">2</span>))</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>ack  <span class="ot">=</span> fix (\f n m <span class="ot">-&gt;</span></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">if</span> n <span class="op">==</span> <span class="dv">0</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">then</span> m <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">else</span> (<span class="kw">if</span> m <span class="op">==</span> <span class="dv">0</span></span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>      <span class="kw">then</span> f (n<span class="op">-</span><span class="dv">1</span>) <span class="dv">1</span></span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>      <span class="kw">else</span> f (n<span class="op">-</span><span class="dv">1</span>) (f n (m<span class="op">-</span><span class="dv">1</span>))))</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a>tak  <span class="ot">=</span> fix (\f x y z <span class="ot">-&gt;</span> </span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">if</span> y <span class="op">&gt;=</span> x </span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">then</span> z </span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">else</span> f (f (x<span class="op">-</span><span class="dv">1</span>) y z) (f (y<span class="op">-</span><span class="dv">1</span>) z x) (f (z<span class="op">-</span><span class="dv">1</span>) x y ))</span></code></pre></div>
+<p>Benchmarking these programs with the <a href="https://hackage.haskell.org/package/criterion">Criterion micro-benchmarking suite</a> yields the following results:</p>
+<table>
+<thead>
+<tr>
+<th>program</th>
+<th>HHI-Reducer</th>
+<th>MicroHs</th>
+<th>Haskell native</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fib 37</td>
+<td>8.641 s</td>
+<td>6.296 s</td>
+<td>727.3 ms</td>
+</tr>
+<tr>
+<td>ackermann 3 9</td>
+<td>4.170 s</td>
+<td>1.575 s</td>
+<td>105.6 ms</td>
+</tr>
+<tr>
+<td>tak 18 6 3</td>
+<td>1.225 ms</td>
+<td>1.101 ms</td>
+<td>42.01 μs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="interpretation-of-the-results">Interpretation of the results</h3>
+<p>The numbers show a clear hierarchy: MicroHs consistently outperforms the baseline HHI-Reducer, but native GHC code remains an order of magnitude faster. There is some variation between the different programs. For example, MicroHs can handle the ack-function significantly better (factor 2.6) than the HHI-Reducer. For the tak-function on the other hand the factor is just 1.1. A complete overview is given in the following table:</p>
+<table>
+<thead>
+<tr>
+<th>factor in direct comparison</th>
+<th>fib</th>
+<th>ack</th>
+<th>tak</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MicroHs vs HHI-Reducer</td>
+<td>1.4</td>
+<td>2.6</td>
+<td>1.1</td>
+</tr>
+<tr>
+<td>GHC native vs MicroHs</td>
+<td>8.7</td>
+<td>14.9</td>
+<td>26.2</td>
+</tr>
+</tbody>
+</table>
+<p>Before doing this benchmarking exercise I had two expectations:</p>
+<ul>
+<li>MicroHs will outperform my toy reducers.</li>
+<li>GHC will be about ten times faster then MicroHs.</li>
+</ul>
+<p>My first expection was met, however for a 3-argument function like <code>tak</code> MicroHs is only 10% faster.</p>
+<p>The second expectation was clearly not met for the <code>tak</code>-function!
+In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">post on optimizing bracket abstraction</a> I have demonstrated how the code size of classic abstraction algorithms will grow quadratically with the number of variables of a function. In that post I have also shown how advanced approaches like <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Kiselyovs Bulk-Combinators</a> can significantly improve this behaviour.</p>
+<p>So evaluating if Bulk-combinators could improve performance of MicroHs would be an interesting topic.</p>
+<p>Looking at the compilation output of the <code>fib 37</code> program, there seems to very little room for improvement as the generated code is already quite dense:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">R</span> <span class="dv">1</span>(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">C</span> <span class="dt">LEQ</span> <span class="dv">1</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">ADD</span>)(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>)))(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">2</span>) <span class="dt">B</span>))))) <span class="dv">37</span></span></code></pre></div>
+<p>For such programs we see that the GHC equivalent still runs 8.7 times faster. So it would be great if the reductions per seconds rate of <code>mhseval</code> could be improved.</p>
+<h2 id="using-the-ffi-wrapper-to-compile-and-execute-haskell-programs">Using the FFI wrapper to compile and execute Haskell programs</h2>
+<p>In this blog post, I have so far only used the parts of MiscroHs that deal either directly with the generation of Combinator code or with the execution of Combinator code.</p>
+<p>But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way:</p>
+<p>Let’s assume we have a file <code>Example.hs</code> with the following code:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">Example</span> <span class="kw">where</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="ot">fac ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>fac <span class="dv">0</span> <span class="ot">=</span> <span class="dv">1</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>fac n <span class="ot">=</span> n <span class="op">*</span> fac(n <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;computing some factorials&quot;</span></span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> fac [<span class="dv">0</span><span class="op">..</span><span class="dv">10</span>]</span></code></pre></div>
+<p>Now let’s use MicroHs to compile and execute this code from some arbitrary GHC compiled Haskell program:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">MhsEval</span> (withMhsContext, eval, run)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">MicroHs.Main</span> <span class="kw">as</span> <span class="dt">MHS</span> (main)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">System.Process</span> (withArgs)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use microHs to compile &#39;Example.hs&#39; to &#39;out.comb&#39;</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>  withArgs [<span class="st">&quot;Example.hs&quot;</span>] MHS.main</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- read the program &#39;out.comb&#39; into a string</span></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>  prg&#39; <span class="ot">&lt;-</span> <span class="fu">readFile</span> <span class="st">&quot;out.comb&quot;</span></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use the MicroHs runtime to execute the program</span></span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>  withMhsContext <span class="op">$</span> \ctx <span class="ot">-&gt;</span></span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>    run ctx prg&#39;</span></code></pre></div>
+<p>The output of this program in GHCI looks like follows:</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ghci</span><span class="op">&gt;</span> main</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="ex">computing</span> some factorials</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="ex">[1,1,2,6,24,120,720,5040,40320,362880,3628800]</span></span></code></pre></div>
+<p>Ok, this works as expected but it feels a bit clumsy to send the compiler output to a file and then read in that file to be able to execute it.
+In order to improve this sketchy solution I integrated the MhsEval wrapper more tightly into the mhs compiler by implementing the <code>mhs -r</code> option also for GHC based compiles. With this goody the compile and execute cycle can be unified in a single command, as shown in the following snippet:</p>
+<div class="sourceCode" id="cb31"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">MicroHs.Main</span> <span class="kw">as</span> <span class="dt">MHS</span> (main)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">System.Process</span> (withArgs)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use MicroHs to compile AND execute the &#39;Example.hs&#39; program</span></span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>  withArgs [<span class="st">&quot;-r&quot;</span>, <span class="st">&quot;Example.hs&quot;</span>] MHS.main</span></code></pre></div>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this post, I’ve demonstrated how to successfully integrate MicroHs as a backend for my toy combinator compiler, showcasing the elegance and power of combinatory logic as a compilation target. By adapting my compiler to emit MicroHs-compatible code, I was able to leverage the robust MicroHs graph-reduction runtime as an execution backend.</p>
+<p>The performance benchmarks reveal that MicroHs consistently outperforms my toy runtime implementations, with speedups ranging from 10% (for tak) to 2.6x (for Ackermann).
+There is still a huge gap to GHC compiled code.</p>
+<p>The work also highlights the remarkable achievement of the MicroHs project itself: a complete, bootstrappable Haskell compiler that fits in a compact, hackable codebase while demonstrating sophisticated compilation techniques.
+The presented FFI wrapper makes it possible to embed the complete MicroHs compiler and runtime within any GHC-compiled Haskell program. This opens up interesting possibilities for embedded haskell scripting and runtime code generation.</p>
+<p>For anyone interested in compiler implementation, functional programming foundations, or combinatory logic, MicroHs provides an excellent playground for experimentation. The ability to embed it within larger Haskell applications makes it particularly valuable for research and teaching purposes.</p>
+<h2 id="appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">Appendix: my earlier posts on combinatory logic and graph-reduction</h2>
+<ul>
+<li><p>In <a href="https://thma.github.io/posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html">λ-Calculus, Combinatory Logic and Cartesian Closed Categories</a> I explained the basic concepts of compiling λ-Calculus based languages to combinatory logic expressions.
+This post also explores the deep correspondence between simply‑typed λ‑calculus, combinatory logic, and cartesian closed categories (CCC).</p></li>
+<li><p>In <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">Implementing a Functional Language with Graph Reduction</a> I’m describing a minimal functional language implemented in Haskell using three core components: (1) a parser for untyped λ‑calculus, (2) a compiler translating λ‑terms into a fixed combinator set (S,K,I,B,C,Y) via bracket abstraction with basic optimizations, and (3) a graph‑reduction engine using in‑place mutable STRef nodes to implement combinator rewrite rules efficiently</p></li>
+<li><p><a href="https://thma.github.io/posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html">Evaluating SKI Combinators as Native Haskell Functions</a> This follow‑up provides an alternative to the graph reduction backend with direct evaluation of combinators as first‑class Haskell functions. The result is a significantly simpler and more compact implementation that achieves performance improvements by factors of 10 to 100 over the previous graph‑reduction approach</p></li>
+<li><p><a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">Optimizing Bracket Abstraction for Combinator Reduction</a>
+Building on the last two posts, this article focuses on improving the bracket‑abstraction phase.
+I’m implementing several different optimizations of bracket abstraction introduced by Kiselyov. In particular I perform benchmarks to study their impact on execution speed.</p></li>
+</ul>
+]]></summary>
+</entry>
+<entry>
     <title>Real World REST APIs with Scotty and Generic-Persistence</title>
     <link href="https://thma.github.io//posts/2024-12-05-real-worlds-rest-services-with-scotty-and-gp.html" />
     <id>https://thma.github.io//posts/2024-12-05-real-worlds-rest-services-with-scotty-and-gp.html</id>
@@ -422,44 +811,44 @@ I will use <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI
 <div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> λx y<span class="op">.</span> <span class="op">*</span> x y</span></code></pre></div>
 <table>
 <thead>
-<tr class="header">
+<tr>
 <th>Compiler</th>
 <th>Output</th>
 <th>Code Size</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><code>compileBracket</code></td>
 <td><code>MUL</code></td>
 <td>1</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compilePlain</code></td>
 <td><code>R I(B S(B(B MUL)(B K I)))</code></td>
 <td>10</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileK</code></td>
 <td><code>R I(B B(B MUL I)))</code></td>
 <td>7</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileEta</code></td>
 <td><code>MUL</code></td>
 <td>1</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulk</code></td>
 <td><code>MUL</code></td>
 <td>1</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileBulkLinear</code></td>
 <td><code>MUL</code></td>
 <td>1</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulkLog</code></td>
 <td><code>MUL</code></td>
 <td>1</td>
@@ -488,44 +877,44 @@ I will use <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI
 <col style="width: 7%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Compiler</th>
 <th>Output</th>
 <th>Code Size</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><code>compileBracket</code></td>
 <td><code>Y(B' S(C' IF ZEROP 1)(B' S MUL(C' S K SUB1))) 100</code></td>
 <td>13</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compilePlain</code></td>
 <td><code>Y(B(S(R 1(B IF(B ZEROP I))))(B(S(B MUL I))(R(B SUB1 I)(B S(B K I))))) 100</code></td>
 <td>23</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileK</code></td>
 <td><code>Y(B(S(C(B IF(B ZEROP I)) 1))(B(S(B MUL I))(R(B SUB1 I)(B B I)))) 100</code></td>
 <td>21</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileEta</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(R SUB1 B))) 100</code></td>
 <td>13</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulk</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
 <td>14</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileBulkLinear</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
 <td>14</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulkLog</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S MUL)(C C SUB1 B))) 100</code></td>
 <td>14</td>
@@ -547,44 +936,44 @@ I will use <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI
 <col style="width: 7%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Compiler</th>
 <th>Output</th>
 <th>Code Size</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><code>compileBracket</code></td>
 <td><code>Y(B' S(C' IF ZEROP 1)(B' S(C' IF(C EQL 1) 1)(S' S(B' S(K ADD)(C' S K SUB1))(C' S K(C SUB 2))))) 10</code></td>
 <td>27</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compilePlain</code></td>
 <td><code>Y(B(S(R 1(B IF(B ZEROP I))))(B(S(R 1(B IF(R 1(B EQL I)))))(S(B S(B(B ADD)(R(B SUB1 I)(B S(B K I)))))(R(R 2(B SUB I))(B S(B K I)))))) 10</code></td>
 <td>43</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileK</code></td>
 <td><code>Y(B(S(C(B IF(B ZEROP I)) 1))(B(S(C(B IF(C(B EQL I) 1)) 1))(S(B S(B(B ADD)(R(B SUB1 I)(B B I))))(R(C(B SUB I) 2)(B B I))))) 10</code></td>
 <td>39</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileEta</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S(B S(B(B ADD)(R SUB1 B)))(R(C SUB 2) B)))) 10</code></td>
 <td>27</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulk</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S2(B2 ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
 <td>26</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileBulkLinear</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(B(B S) B S(B B B ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
 <td>32</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulkLog</code></td>
 <td><code>Y(B(S(C(B IF ZEROP) 1))(B(S(C(B IF(C EQL 1)) 1))(S B I(B(B S) B) I(S B I B ADD(C C SUB1 B))(C C(C SUB 2) B)))) 10</code></td>
 <td>36</td>
@@ -607,44 +996,44 @@ I will use <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI
 <col style="width: 7%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Compiler</th>
 <th>Output</th>
 <th>Code Size</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><code>compileBracket</code></td>
 <td><code>Y(B' S(B S(C'(B S K)(B IF ZEROP)(C ADD 1)))(S'(B S(S(K S)))(B' S(K(S(B IF ZEROP)))(B' S(K K)(C' S(C' S K SUB1)(K 1))))(S'(B S(S(K(B S K))))(C' S K SUB1)(C' S(S(K(B S K)))(K SUB1))))) 2 2</code></td>
 <td>59</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compilePlain</code></td>
 <td><code>Y(B(S(B S(R(R 1(B ADD I))(B S(B(B IF)(B(B ZEROP)(B K I)))))))(S(B S(B(B S)(B(B(S(B IF(B ZEROP I))))(B(B(R 1))(R(B(B SUB1)(B K I))(B S(B(B S)(B(B K)(B K I)))))))))(S(B S(B(B S)(R(B(B SUB1)(B K I))(B S(B(B S)(B(B K)(B K I)))))))(B(R(B SUB1 I))(B(B S)(R(B K I)(B S(B(B S)(B(B K)(B K I)))))))))) 2 2</code></td>
 <td>103</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileK</code></td>
 <td><code>Y(B(S(B S(R(C(B ADD I) 1)(B B(B IF(B ZEROP I))))))(S(B S(B(B S)(B(B(C(B IF(B ZEROP I))))(B(R 1)(R(B SUB1 I)(B B I))))))(S(B S(B(B B)(R(B SUB1 I)(B B I))))(B(R(B SUB1 I))(B(B B)(R I(B B I))))))) 2 2</code></td>
 <td>66</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileEta</code></td>
 <td><code>Y(B(S(B S(R(C ADD 1)(B B(B IF ZEROP)))))(S(B S(B(B S)(B(B(C(B IF ZEROP)))(B(R 1)(R SUB1 B)))))(S(B S(B(B B)(R SUB1 B)))(B(R SUB1)(B B))))) 2 2</code></td>
 <td>44</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulk</code></td>
 <td><code>Y(B(S2(C C(C ADD 1)(B B(B IF ZEROP))))(S3(B2(C(B IF ZEROP))(C C2 1(C C SUB1 B)))(S2(B2 B(C C SUB1 B))(C C2 SUB1(B B))))) 2 2</code></td>
 <td>36</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileBulkLinear</code></td>
 <td><code>Y(B(B(B S) B S(C C(C ADD 1)(B B(B IF ZEROP))))(B(B S) B(B(B S) B S)(B B B(C(B IF ZEROP))(C(B(B C) B C) 1(C C SUB1 B)))(B(B S) B S(B B B B(C C SUB1 B))(C(B(B C) B C) SUB1(B B))))) 2 2</code></td>
 <td>64</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulkLog</code></td>
 <td><code>Y(B(S B I(B(B S) B) I(C C(C ADD 1)(B B(B IF ZEROP))))(B(B(B(B S) B))(S B I)(B(B S) B) I(S B I B(C(B IF ZEROP))(C(S B I(B(B C) B) I) 1(C C SUB1 B)))(S B I(B(B S) B) I(S B I B B(C C SUB1 B))(C(S B I(B(B C) B) I) SUB1(B B))))) 2 2</code></td>
 <td>83</td>
@@ -669,44 +1058,44 @@ the previous example with two variables.</p>
 <col style="width: 7%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>Compiler</th>
 <th>Output</th>
 <th>Code Size</th>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><code>compileBracket</code></td>
 <td><code>Y(B' S(B'(S(K S))(S(K S))(B' S(K IF)(B' S GEQ K)))(S'(B S(S(K(B S(S(K S))))))(S'(B S(S(K(B S(S(K S))))))(S'(B'(S(K(B'(S(K S)) K S))) K S) K(C' S K SUB1))(C'(B'(S(K(B S K))) S(S(K S)))(C' S K SUB1)(B K K)))(C'(B S(S(K(B'(S(K S)) K S))))(C'(B'(S(K S)) K S)(C' S K SUB1) K)(K K)))) 7 4 2</code></td>
 <td>98</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compilePlain</code></td>
 <td><code>Y(B(S(B S(B(B S)(B(R I)(B(B S)(B(B(B IF))(B(S(B S(B(B GEQ)(B K I))))(B(B K)(B K I)))))))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))(B(B(R I))(B(B(B S))(B(R(B K I))(B(B S)(B(B(B S))(R(B(B(B SUB1))(B(B K)(B K I)))(B S(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))))))))))))(R(B(B K)(B K I))(B S(B(B S)(B(B(B S))(B(B(R I))(B(B(B S))(B(R(B(B SUB1)(B K I)))(B(B S)(B(B(B S))(B(B(B K))(B(B K)(B K I))))))))))))))))(B(R(B K I))(B(B S)(B(B(B S))(R(B(B K)(B K I))(B S(B(B S)(B(B(B S))(B(B(R(B SUB1 I)))(B(B(B S))(B(B(B K))(B(B K)(B K I)))))))))))))) 7 4 2</code></td>
 <td>221</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileK</code></td>
 <td><code>Y(B(S(B S(B(B S)(B(R I)(B(B B)(B(B IF)(B(C(B GEQ I)) I)))))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B(B B I)))(B(B(R I))(B(B(B B))(B(R I)(B(B B)(R(B SUB1 I)(B B I))))))))))(R I(B B(B C(B(B C)(B(R I)(B(B B)(R(B SUB1 I)(B B I))))))))))))(B(R I)(B(B B)(B(B C)(R I(B B(B C(R(B SUB1 I)(B B I)))))))))) 7 4 2</code></td>
 <td>116</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileEta</code></td>
 <td><code>Y(B(S(B S(B(B S)(B(B IF)(C GEQ)))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B B))(R SUB1 B)))))(B C(B(B C)(R SUB1 B)))))))(B(B C)(B C(R SUB1 B))))) 7 4 2</code></td>
 <td>58</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulk</code></td>
 <td><code>Y(B(S3(B2 IF(C GEQ)))(S4(S4(S B3(C C SUB1 B))(B C2(C C SUB1 B)))(B2 C(B C(C C SUB1 B))))) 7 4 2</code></td>
 <td>29</td>
 </tr>
-<tr class="even">
+<tr>
 <td><code>compileBulkLinear</code></td>
 <td><code>Y(B(B(B S) B(B(B S) B S)(B B B IF(C GEQ)))(B(B S) B(B(B S) B(B(B S) B S))(B(B S) B(B(B S) B(B(B S) B S))(S(B B(B B B))(C C SUB1 B))(B(B(B C) B C)(C C SUB1 B)))(B B B C(B C(C C SUB1 B))))) 7 4 2</code></td>
 <td>73</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><code>compileBulkLog</code></td>
 <td><code>Y(B(B(B(B(B S) B))(S B I)(B(B S) B) I(S B I B IF(C GEQ)))(S B I(S B I(B(B S) B)) I(S B I(S B I(B(B S) B)) I(S(B(B B)(S B I) B)(C C SUB1 B))(B(S B I(B(B C) B) I)(C C SUB1 B)))(S B I B C(B C(C C SUB1 B))))) 7 4 2</code></td>
 <td>81</td>
@@ -786,7 +1175,7 @@ All durations are given in μs.</p>
 <col style="width: 20%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>execution time [μs]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -795,28 +1184,28 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>41.34</td>
 <td>41.26</td>
 <td>41.46</td>
 <td>41.45</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>107.8</td>
 <td>108.4</td>
 <td>108.9</td>
 <td>113.4</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>32.22</td>
 <td>24.11</td>
 <td>25.15</td>
 <td>34.27</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>194.7</td>
 <td>80.18</td>
@@ -835,7 +1224,7 @@ All durations are given in μs.</p>
 <col style="width: 20%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>code size [# comb.]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -844,28 +1233,28 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>13</td>
 <td>13</td>
 <td>14</td>
 <td>14</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>27</td>
 <td>27</td>
 <td>32</td>
 <td>36</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>59</td>
 <td>44</td>
 <td>64</td>
 <td>83</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>98</td>
 <td>58</td>
@@ -885,7 +1274,7 @@ All durations are given in μs.</p>
 <col style="width: 20%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>time / comb. [μs]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -894,28 +1283,28 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>3.18</td>
 <td>3.17</td>
 <td>2.96</td>
 <td>2.96</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>3.99</td>
 <td>4.01</td>
 <td>3.40</td>
 <td>3.15</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>0.55</td>
 <td>0.55</td>
 <td>0.39</td>
 <td>0.41</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>1.99</td>
 <td>1.38</td>
@@ -936,7 +1325,7 @@ All durations are given in μs.</p>
 <col style="width: 20%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>execution time [μs]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -945,28 +1334,28 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>14.29</td>
 <td>14.30</td>
 <td>14.33</td>
 <td>14.28</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>25.53</td>
 <td>25.68</td>
 <td>25.88</td>
 <td>27.12</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>10.19</td>
 <td>7.309</td>
 <td>8.012</td>
 <td>10.12</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>30.35</td>
 <td>21.28</td>
@@ -989,7 +1378,7 @@ All durations are given in μs.</p>
 <col style="width: 14%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>execution time [μs]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -1000,7 +1389,7 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>14.29</td>
 <td>14.30</td>
@@ -1009,7 +1398,7 @@ All durations are given in μs.</p>
 <td>14.33</td>
 <td>14.28</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>25.53</td>
 <td>25.68</td>
@@ -1018,7 +1407,7 @@ All durations are given in μs.</p>
 <td>25.88</td>
 <td>27.12</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>10.19</td>
 <td>7.309</td>
@@ -1027,7 +1416,7 @@ All durations are given in μs.</p>
 <td>8.012</td>
 <td>10.12</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>30.35</td>
 <td>21.28</td>
@@ -1056,7 +1445,7 @@ All durations are given in μs.</p>
 <col style="width: 14%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>code size [# comb.]</th>
 <th>compileBracket</th>
 <th>compileEta</th>
@@ -1067,7 +1456,7 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>13</td>
 <td>13</td>
@@ -1076,7 +1465,7 @@ All durations are given in μs.</p>
 <td>14</td>
 <td>14</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>27</td>
 <td>27</td>
@@ -1085,7 +1474,7 @@ All durations are given in μs.</p>
 <td>32</td>
 <td>36</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>59</td>
 <td>44</td>
@@ -1094,7 +1483,7 @@ All durations are given in μs.</p>
 <td>64</td>
 <td>83</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>98</td>
 <td>58</td>
@@ -1124,7 +1513,7 @@ All durations are given in μs.</p>
 <col style="width: 25%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th>execution time [μs]</th>
 <th>GraphReduction with compileEta</th>
 <th>HHI-Reducer with compileBulk (lin. ex.)</th>
@@ -1132,25 +1521,25 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>41.26</td>
 <td>14.34</td>
 <td>2.776</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>108.4</td>
 <td>25.73</td>
 <td>1.824</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>24.11</td>
 <td>7.350</td>
 <td>0.259</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>80.18</td>
 <td>17.90</td>
@@ -1161,7 +1550,7 @@ All durations are given in μs.</p>
 <p>In the following table I’m computing ratios to get simpler comparison metrics:</p>
 <table>
 <thead>
-<tr class="header">
+<tr>
 <th>time ratios</th>
 <th>ratio GR / HHI</th>
 <th>ratio GR/ native</th>
@@ -1169,25 +1558,25 @@ All durations are given in μs.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td>2.88</td>
 <td>14.86</td>
 <td>5.17</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td>4.21</td>
 <td>59.43</td>
 <td>14.11</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td>3.28</td>
 <td>93.12</td>
 <td>28.38</td>
 </tr>
-<tr class="even">
+<tr>
 <td>tak</td>
 <td>4.48</td>
 <td>98.99</td>
@@ -2671,7 +3060,7 @@ In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that 
 <col style="width: 12%" />
 </colgroup>
 <thead>
-<tr class="header">
+<tr>
 <th></th>
 <th style="text-align: right;">SICKBY GraphReduction [μs]</th>
 <th style="text-align: right;">SICKBY as functions [μs]</th>
@@ -2679,31 +3068,31 @@ In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that 
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td><a href="https://github.com/thma/lambda-ski/blob/main/test/factorial.ths">factorial</a></td>
 <td style="text-align: right;">1273</td>
 <td style="text-align: right;">24.92</td>
 <td style="text-align: right;">51</td>
 </tr>
-<tr class="even">
+<tr>
 <td><a href="https://github.com/thma/lambda-ski/blob/main/test/fibonacci.ths">fibonacci</a></td>
 <td style="text-align: right;">484</td>
 <td style="text-align: right;">50.70</td>
 <td style="text-align: right;">10</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><a href="https://github.com/thma/lambda-ski/blob/main/test/ackermann.ths">ackermann</a></td>
 <td style="text-align: right;">386</td>
 <td style="text-align: right;">16,88</td>
 <td style="text-align: right;">23</td>
 </tr>
-<tr class="even">
+<tr>
 <td><a href="https://github.com/thma/lambda-ski/blob/main/test/gaussian.ths">gaussian sum</a></td>
 <td style="text-align: right;">1414</td>
 <td style="text-align: right;">16,18</td>
 <td style="text-align: right;">87</td>
 </tr>
-<tr class="odd">
+<tr>
 <td><a href="https://github.com/thma/lambda-ski/blob/main/test/tak.ths">tak</a></td>
 <td style="text-align: right;">3204</td>
 <td style="text-align: right;">75,69</td>
@@ -2716,7 +3105,7 @@ In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that 
 <p>It’s interesting to see how the “combinators as native functions” execution performs in comparison to actual Haskell implementations of our five test functions. The Haskell native implementations can be found in the <a href="https://github.com/thma/lambda-ski/blob/main/benchmark/ReductionBenchmarks.hs">benchmark definition</a>.</p>
 <table>
 <thead>
-<tr class="header">
+<tr>
 <th></th>
 <th style="text-align: right;">SICKBY as functions [μs]</th>
 <th style="text-align: right;">Haskell native [μs]</th>
@@ -2724,31 +3113,31 @@ In our case we want apply functions of type <code>CExpr -&gt; CExpr</code> that 
 </tr>
 </thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>factorial</td>
 <td style="text-align: right;">24.92</td>
 <td style="text-align: right;">4.743</td>
 <td style="text-align: right;">5</td>
 </tr>
-<tr class="even">
+<tr>
 <td>fibonacci</td>
 <td style="text-align: right;">50.70</td>
 <td style="text-align: right;">2.824</td>
 <td style="text-align: right;">18</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>ackermann</td>
 <td style="text-align: right;">16,88</td>
 <td style="text-align: right;">0.497</td>
 <td style="text-align: right;">34</td>
 </tr>
-<tr class="even">
+<tr>
 <td>gaussian sum</td>
 <td style="text-align: right;">16,18</td>
 <td style="text-align: right;">1.302</td>
 <td style="text-align: right;">12</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>tak</td>
 <td style="text-align: right;">75,69</td>
 <td style="text-align: right;">0.084</td>
@@ -3278,432 +3667,6 @@ HsWiki</code></pre>
 <li>The actual lib files go to <code>C:\Users\&lt;username&gt;\AppData\Local\Programs\stack\x86_64-windows\msys2-&lt;installdate&gt;\mingw64\lib</code>
 Don’t forget to strip version number from the .dll files (so icuuc70.dll becomes icuuc.dll)</li>
 <li>The include files go to <code>C:\Users\&lt;username&gt;\AppData\Local\Programs\stack\x86_64-windows\msys2-&lt;installdate&gt;\mingw64\include\unicode</code></li>
-</ul>
-]]></summary>
-</entry>
-<entry>
-    <title>Implementing a Functional Language with Graph Reduction</title>
-    <link href="https://thma.github.io//posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html" />
-    <id>https://thma.github.io//posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html</id>
-    <published>2021-12-27T00:00:00Z</published>
-    <updated>2021-12-27T00:00:00Z</updated>
-    <summary type="html"><![CDATA[<div class="info">
-    <em>Posted on December 27, 2021
-    
-        by Thomas Mahler
-    </em><br/><br/>
-</div>
-
-<p><a href="https://github.com/thma/lambda-ski/actions"><img src="https://github.com/thma/lambda-ski/workflows/Haskell-CI/badge.svg" alt="Actions Status" /></a> <a href="https://github.com/thma/lambda-ski"><img src="/img/forkme.png" height="20" ></a></p>
-<h2 id="abstract">Abstract</h2>
-<p>Implementing a small functional language with a classic combinator based graph-reduction machine in Haskell.</p>
-<p>The implementation is structured into three parts:</p>
-<ol type="1">
-<li><p>A λ-calculus parser from <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">A Combinatory Compiler</a>
-which was extended to cover a tiny functional language based on the untyped λ-calculus.</p></li>
-<li><p>A compiler from λ-calculus to combinatory logic combinators (S,K,I,B,C and Y) which is based on bracket-abstraction and some optimization rules.</p></li>
-<li><p>A graph-reducer. Combinator terms are allocated into a graph data-structure.
-Which is then reduced by applying combinator graph-reduction. The destructive inplace reduction of the graph is made possible by using <code>STRef</code> mutable references.</p></li>
-</ol>
-<h2 id="introduction">Introduction</h2>
-<p>In my <a href="https://thma.github.io/posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html">last blog post</a> I presented two ways of transforming λ-terms into variable free representations:
-- bracket abstraction to combinatory logic terms (SKI) and
-- bracket abstraction to terms of closed cartesian categories (CCC).</p>
-<p>I demonstrated that both representations are equivalent as they imply the same reduction rules.</p>
-<p>My original intention was to extend an existing Haskell CCC implementation to a proof-of-concept implementation of a small functional language. I even promised to cover this in my next blog post.</p>
-<p>I invested a lot of time in this idea but I failed to get it off the ground. <a href="https://github.com/thma/lambda-cat">At least the code of these experiments has been preserved</a>.</p>
-<p>So I came back to writing a SKI graph-reduction as the backend of my language implementation. This is a well-worn path. I took the basic ideas from the classic <a href="https://www.goodreads.com/book/show/3468677-compiling-functional-languages">compiling functional languages</a> which dates back to 1988.</p>
-<p>Fortunately, I did not fail this time!
-In the following I’m explaining my implementation approach. I’ll also share some of my insights and talk about possible future extensions.</p>
-<h2 id="representing-λ-expressions">representing λ-expressions</h2>
-<p>I’m aiming at a very rudimentary language that is basically just pure λ-calculus plus integers. Here is an example:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>    <span class="ot">=</span> λf <span class="op">.</span> (λx <span class="op">.</span> x x)(λx <span class="op">.</span> f(x x))</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>fact <span class="ot">=</span> <span class="dt">Y</span>(\f n <span class="ot">-&gt;</span> <span class="kw">if</span> (is0 n) <span class="dv">1</span> (<span class="op">*</span> n (f (sub1 n))))</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> fact <span class="dv">10</span></span></code></pre></div>
-<p>As you can see it’s possible to use classical λ-calculus notation <code>λx . x x</code> as well as Haskell syntax: <code>\x -&gt; x x</code>. It’s also possible to freely mix both styles.</p>
-<p>λ-expressions can be assigned to names in a top-level environment by using the <code>=</code> sign. those names may be referred to in other λ-expressions.
-As of now recursive (also mutually recursive) references are not supported.</p>
-<p>The <code>main</code> expression has a special meaning; it is interpreted as the entry point to a program.</p>
-<p>With this knowledge at hand you will immediately recognize that the above program will compute the factorial of 10. Where <code>fact</code> is defined in a non-recursive way by means of the fixed-point combinator <code>Y</code>.</p>
-<p>Expressions of this language are represented by the data type <code>Expr</code>:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">infixl</span> <span class="dv">5</span> <span class="op">:@</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Expr</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> <span class="dt">Expr</span> <span class="op">:@</span> <span class="dt">Expr</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Var</span> <span class="dt">String</span></span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Int</span> <span class="dt">Integer</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lam</span> <span class="dt">String</span> <span class="dt">Expr</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)</span></code></pre></div>
-<p>The top-level environment which maps names to λ-Expressions is represented by the following type:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">Environment</span> <span class="ot">=</span> [(<span class="dt">String</span>, <span class="dt">Expr</span>)]</span></code></pre></div>
-<h2 id="the-parser">The Parser</h2>
-<p>There is not much to see in <a href="https://github.com/thma/lambda-ski/blob/main/src/Parser.hs">this area</a>. It’s just a simple Parsec based parser. Most of the code was taken from <a href="https://crypto.stanford.edu/~blynn/lambda/sk.html">A Combinatory Compiler</a>. I just added the parsing of Integers.</p>
-<p>The parser module exports to function <code>parseEnvironmentEither</code> and <code>parseEnvironment</code>. The former is a total function returning an Either: <code>parseEnvironmentEither :: String -&gt; Either ParseError Environment</code>, whereas the latter simply returns an <code>Environment</code> but may throw run-time errors.</p>
-<p>The following <a href="https://github.com/thma/lambda-ski/blob/main/app/Main.hs">snippet</a> demonstrates how a program is parsed into an Environment:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ot">testSource ::</span> <span class="dt">String</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>testSource <span class="ot">=</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>       <span class="st">&quot;Y    = λf -&gt; (λx -&gt; x x)(λx -&gt; f(x x)) \n&quot;</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">++</span> <span class="st">&quot;fact = Y(λf n -&gt; if (is0 n) 1 (* n (f (sub1 n)))) \n&quot;</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">++</span> <span class="st">&quot;main = fact 10 \n&quot;</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> env <span class="ot">=</span> parseEnvironment testSource</span>
-<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mapM_</span> <span class="fu">print</span> env</span>
-<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;&quot;</span></span></code></pre></div>
-<p>This code results in the following output, which shows all <code>(String, Expr)</code> tuples in the environment:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;Y&quot;</span>,   <span class="dt">Lam</span> <span class="st">&quot;f&quot;</span> (<span class="dt">Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">Var</span> <span class="st">&quot;x&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;x&quot;</span>) <span class="op">:@</span> <span class="dt">Lam</span> <span class="st">&quot;x&quot;</span> (<span class="dt">Var</span> <span class="st">&quot;f&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;x&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;x&quot;</span>))))</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;fact&quot;</span>,<span class="dt">Var</span> <span class="st">&quot;Y&quot;</span> <span class="op">:@</span> <span class="dt">Lam</span> <span class="st">&quot;f&quot;</span> (<span class="dt">Lam</span> <span class="st">&quot;n&quot;</span> (((<span class="dt">Var</span> <span class="st">&quot;if&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;is0&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;n&quot;</span>)) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">1</span>) <span class="op">:@</span> </span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>        ((<span class="dt">Var</span> <span class="st">&quot;*&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;n&quot;</span>) <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;f&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;sub1&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;n&quot;</span>))))))</span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>(<span class="st">&quot;main&quot;</span>,<span class="dt">Var</span> <span class="st">&quot;fact&quot;</span> <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">10</span>)</span></code></pre></div>
-<h2 id="bracket-abstraction">Bracket abstraction</h2>
-<h3 id="motivation">Motivation</h3>
-<p>Of course it is possible to write interpreters that evaluate these λ-expression to normalform.
-This is what any Lisp or Scheme eval/apply interpreter does at its core <a href="http://www.sicpdistilled.com/section/4.1/">(See a tiny example here)</a>.</p>
-<p>One of the most problematic areas of these interpreters is the handling of variables. In order to provide static binding you will need closures that captures the current environment of variable bindings and thread them through the whole interpreter execution.</p>
-<p>Language implemetors have thus experimented with many ways to tackle this issue. One of the most influential ideas was to completely get rid of variables by abstracting them.</p>
-<p>The earliest version of this approach was <a href="https://en.wikipedia.org/wiki/SKI_combinator_calculus">the SKI combinator calculus</a> invented by Haskell Curry and Moses Schönfinkel.</p>
-<p>A λ-term that does not contain any free variables is said to be closed. Closed lambda terms are also called <em>combinators</em>.</p>
-<p>Schönfinkel and Curry found out that any closed λ-term can be rewritten in terms of three basic combinators I, K and S (in fact only <em>K</em> and <em>S</em> are essential, as <em>I</em> can be expressed as SKK):</p>
-<p><img style="align:center;" src="https://latex.codecogs.com/gif.latex?\begin{array}{rcl}&space;I&space;&&space;=&space;&&space;\lambda&space;x.x&space;\\&space;K&space;&&space;=&space;&&space;\lambda&space;x.&space;\lambda&space;y.x&space;\\&space;S&space;&&space;=&space;&&space;\lambda&space;f.(\lambda&space;g.(\lambda&space;x.fx(gx)))&space;\end{array}" title="\begin{array}{rcl} I & = & \lambda x.x \\ K & = & \lambda x. \lambda y.x \\ S & = & \lambda f.(\lambda g.(\lambda x.fx(gx))) \end{array}" /></p>
-<p>In Haskell these combinators can simply be defined as:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>i x <span class="ot">=</span> x</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>k x y <span class="ot">=</span> x</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>s f g x <span class="ot">=</span> f x (g x)</span></code></pre></div>
-<h2 id="the-basic-abstraction-rules">The basic abstraction rules</h2>
-<p>The idea of bracket abstraction is to rewrite any closed λ-term in terms of I, K and S.
-This recursive transformation is defined by the following equations:</p>
-<p><img src="https://latex.codecogs.com/gif.latex?\begin{array}{rcl}&space;\left&space;\lceil&space;\lambda&space;x.x&space;\right&space;\rceil&space;&&space;=&space;&&space;I&space;\\&space;\left&space;\lceil&space;\lambda&space;x.y&space;\right&space;\rceil&space;&&space;=&space;&&space;K&space;y&space;\\&space;\left&space;\lceil&space;\lambda&space;x.M&space;N&space;\right&space;\rceil&space;&&space;=&space;&&space;S&space;\left&space;\lceil&space;\lambda&space;x.M&space;\right&space;\rceil&space;\left&space;\lceil&space;\lambda&space;x.N&space;\right&space;\rceil&space;\end{array}" title="\begin{array}{rcl} \left \lceil \lambda x.x \right \rceil & = & I \\ \left \lceil \lambda x.y \right \rceil & = & K y \\ \left \lceil \lambda x.M N \right \rceil & = & S \left \lceil \lambda x.M \right \rceil \left \lceil \lambda x.N \right \rceil \end{array}" /></p>
-<p>This can be implemented in Haskell as follows:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | most basic bracket abstraction (plus resolution of free variables in the environment).</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ot">babs0 ::</span> <span class="dt">Environment</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>babs0 env (<span class="dt">Lam</span> x e) <span class="co">-- this clause implements the three basic equations for bracket abstraction</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Var</span> y <span class="ot">&lt;-</span> t, x <span class="op">==</span> y     <span class="ot">=</span> <span class="dt">Var</span> <span class="st">&quot;i&quot;</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> x <span class="ot">`notElem`</span> fv [] t    <span class="ot">=</span> <span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> t</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> m <span class="op">:@</span> n <span class="ot">&lt;-</span> t            <span class="ot">=</span> <span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> babs0 env (<span class="dt">Lam</span> x m) <span class="op">:@</span> babs0 env (<span class="dt">Lam</span> x n)</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">where</span> t <span class="ot">=</span> babs0 env e</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>babs0 env (<span class="dt">Var</span> s) <span class="co">-- this clause resolves free variables by looking them up in the environment env</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Just</span> t <span class="ot">&lt;-</span> <span class="fu">lookup</span> s env <span class="ot">=</span> babs0 env t</span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="fu">otherwise</span>              <span class="ot">=</span> <span class="dt">Var</span> s</span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>babs0 env  (m <span class="op">:@</span> n)        <span class="ot">=</span> babs0 env m <span class="op">:@</span> babs0 env n  <span class="co">-- this clause recurses into applications</span></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>babs0 _env x               <span class="ot">=</span> x                           <span class="co">-- returns anything else unchanged</span></span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="co">-- | compute the list of free variables of a lambda expression</span></span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="ot">fv ::</span> [<span class="dt">String</span>] <span class="ot">-&gt;</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> [<span class="dt">String</span>]</span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>fv vs (<span class="dt">Var</span> s) <span class="op">|</span> s <span class="ot">`elem`</span> vs <span class="ot">=</span> []</span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>              <span class="op">|</span> <span class="fu">otherwise</span>   <span class="ot">=</span> [s]</span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>fv vs (x <span class="op">:@</span> y)              <span class="ot">=</span> fv vs x <span class="ot">`union`</span> fv vs y</span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>fv vs (<span class="dt">Lam</span> s f)             <span class="ot">=</span> fv (s<span class="op">:</span>vs) f</span>
-<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>fv vs _                     <span class="ot">=</span> vs</span></code></pre></div>
-<p>Let’s have a look at a simple example. first we parse a simple expression into a lambda-term:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> env <span class="ot">=</span> parseEnvironment <span class="st">&quot;main = (λx -&gt; + 4 x) 5\n&quot;</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> env</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>[(<span class="st">&quot;main&quot;</span>,<span class="dt">Lam</span> <span class="st">&quot;x&quot;</span> ((<span class="dt">Var</span> <span class="st">&quot;+&quot;</span> <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">4</span>) <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;x&quot;</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">5</span>)]</span></code></pre></div>
-<p>Next we apply bracket abstraction:</p>
-<pre><code>ghci&gt; skiExpr = babs env (snd . head $ env)
-ghci&gt; skiExpr
-((Var &quot;s&quot; :@ (Var &quot;k&quot; :@ (Var &quot;+&quot; :@ Int 4))) :@ Var &quot;i&quot;) :@ Int 5</code></pre>
-<p>The result of bracket abstraction is still a lambda-term, but one where all <code>Lam</code>-expression have been eliminated.</p>
-<h3 id="optimization">Optimization</h3>
-<p>Even from this simple example it is obvious that the SKI-combinator terms become larger than the original expressions. This will be an impediment to efficient implementation. So many different approaches have been conceived to mitigate this issue.</p>
-<p>The earliest solution, already suggested by Schönfinkel, is to introduce additional combinators B and C that cover specific patterns in the source code. Here are the reduction rules for B and C.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="dt">C</span> f g x <span class="ot">=</span> ((f x) g)</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="dt">B</span> f g x <span class="ot">=</span> (f (g x))</span></code></pre></div>
-<p>We could extend <code>babs</code> to cover B and C. But the most common way is to run a second optimization pass over the SKI-expression.</p>
-<p>Here is is a simple example of such an optimization:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">opt ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>opt (<span class="dt">Var</span> <span class="st">&quot;i&quot;</span> <span class="op">:@</span> n<span class="op">@</span>(<span class="dt">Int</span> _n))                           <span class="ot">=</span> n</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>opt ((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> e1)) <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> e2)) <span class="ot">=</span> <span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> (e1 <span class="op">:@</span> e2)</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>opt ((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> e1) <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> e2))              <span class="ot">=</span> (<span class="dt">Var</span> <span class="st">&quot;c&quot;</span> <span class="op">:@</span> e1) <span class="op">:@</span> e2</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>opt ((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;k&quot;</span> <span class="op">:@</span> e1)) <span class="op">:@</span> e2)              <span class="ot">=</span> (<span class="dt">Var</span> <span class="st">&quot;b&quot;</span> <span class="op">:@</span> e1) <span class="op">:@</span> e2</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>opt (x <span class="op">:@</span> y)                                          <span class="ot">=</span> opt x <span class="op">:@</span> opt y</span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>opt x                                                 <span class="ot">=</span> x</span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="ot">ropt ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>ropt expr <span class="ot">=</span></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> expr&#39; <span class="ot">=</span> opt expr</span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>  <span class="kw">in</span>  <span class="kw">if</span> expr&#39; <span class="op">==</span> expr</span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>        <span class="kw">then</span> expr</span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>        <span class="kw">else</span> <span class="kw">case</span> expr&#39; <span class="kw">of</span></span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>          (x <span class="op">:@</span> y) <span class="ot">-&gt;</span> ropt <span class="op">$</span> ropt x <span class="op">:@</span> ropt y</span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>          _        <span class="ot">-&gt;</span> ropt expr&#39;</span></code></pre></div>
-<p>Let’s try this out:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> optExpr <span class="ot">=</span> ropt skiExpr</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> optEpr</span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>((<span class="dt">Var</span> <span class="st">&quot;b&quot;</span> <span class="op">:@</span> (<span class="dt">Var</span> <span class="st">&quot;+&quot;</span> <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">4</span>)) <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;i&quot;</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">5</span></span></code></pre></div>
-<p>This looks much better than before. See <a href="https://crypto.stanford.edu/~blynn/lambda/logski.html">this project for a more in depth coverage of optimization techniques</a>.
-I’m also planning to write a separate blog post on this subtopic.</p>
-<p>The <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI.hs">sourcecode for this section can be found here</a></p>
-<h2 id="graph-reduction-in-a-nutshell">Graph-reduction in a nutshell</h2>
-<p>So now that we have eliminated lambda abstractions from our lambda terms it should be straight forward to evaluate these expressions with a simple interpreter.</p>
-<p>Let’s have a look at a simple example:</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>sqr  <span class="ot">=</span> λx <span class="ot">-&gt;</span> <span class="op">*</span> x x</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> sqr (<span class="op">+</span> <span class="dv">3</span> <span class="dv">2</span>)</span></code></pre></div>
-<p>When we implement a strict interpreter with applicative-order semantics, <code>(+ 3 2)</code> will be computed first and the result bound to the variable <code>x</code> in the local environment and then the body of <code>sqr</code> will be evaluated in this environment. That’s fine. but it’s not normal-order reduction.</p>
-<p>When implementing a lazy interpreter with normal-order semantics, we can not compute <code>(+ 3 2)</code> before binding it to <code>x</code>. Thus we will have to bind an un-evaluated <em>thunk</em> to <code>x</code>. We will also have to make sure that <code>x</code> is only evaluated when needed and only once, even when it is used at several places in the body of <code>sqr</code>. (See <a href="https://academic.udayton.edu/saverioperugini/courses/cps343/lecture_notes/lazyevaluation.html">these lecture notes for all the intricacies of this approach</a>)</p>
-<p>Graph-reduction on the other hand, has some very interesting features:
-- It maintains normal-order reduction (that is lazy evaluation)
-- double evaluations of terms is avoided
-- dealing with local environments, variable scope, etc. at run-time is avoided
-- copying of argument data is significantly reduced as compared to eval/apply interpreters</p>
-<p>Let’s see this in action with our toy example. The above program can be transformed into the following SKI combinator term:</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;*&quot;</span>) <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;i&quot;</span>) <span class="op">:@</span> ((<span class="dt">Var</span> <span class="st">&quot;+&quot;</span> <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">3</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">2</span>)</span></code></pre></div>
-<p>This term can be represented as a binary graph, where each application <code>:@</code> is represented as an <code>@</code> node, all combinators like <code>(Var "s")</code> are represented with
-Constructors like <code>S</code>, <code>I</code>, <code>MUL</code>, <code>ADD</code> and integer values like <code>Int 2</code> are just shown as numeric values like <code>2</code>:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>          <span class="op">@</span>                   </span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>         <span class="op">/</span> \              </span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>        <span class="op">/</span>   \               </span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>       <span class="op">/</span>     <span class="op">@</span>          </span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>      <span class="op">/</span>     <span class="op">/</span> \          </span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>     <span class="op">/</span>     <span class="op">@</span>   <span class="dv">2</span>         </span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">@</span>     <span class="op">/</span> \     </span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>   <span class="op">/</span> \  <span class="dt">ADD</span>  <span class="dv">3</span>    </span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="op">@</span>   <span class="dt">I</span>            </span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a> <span class="op">/</span> \             </span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="dt">S</span>  <span class="dt">MUL</span>   </span></code></pre></div>
-<p>In the following diagram we follow the reduction of this graph:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>          <span class="op">@</span>                   <span class="op">@</span>                   <span class="op">@</span>                  <span class="op">@</span>           <span class="dv">25</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>         <span class="op">/</span> \                 <span class="op">/</span> \                 <span class="op">/</span> \                <span class="op">/</span> \</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>        <span class="op">/</span>   \               <span class="op">/</span>   \               <span class="op">/</span>   \              <span class="op">/</span>   <span class="op">|</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>       <span class="op">/</span>     <span class="op">@</span>             <span class="op">/</span>     <span class="op">@</span>             <span class="op">/</span>     <span class="op">@</span>            <span class="op">/</span>   <span class="op">/</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>      <span class="op">/</span>     <span class="op">/</span> \           <span class="op">@</span>     <span class="op">/</span> \           <span class="op">@</span>     <span class="op">/</span> \          <span class="op">@</span>   <span class="op">/</span></span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>     <span class="op">/</span>     <span class="op">@</span>   <span class="dv">2</span>         <span class="op">/</span> \   <span class="dt">I</span>   <span class="op">|</span>         <span class="op">/</span> \   <span class="dt">I</span>   <span class="op">|</span>        <span class="op">/</span> \ <span class="op">/</span></span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">@</span>     <span class="op">/</span> \           <span class="op">/</span>   <span class="op">@</span> ––––<span class="op">/</span>         <span class="op">/</span>   <span class="dv">5</span> ––––<span class="op">/</span>        <span class="op">/</span>   <span class="dv">5</span></span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>   <span class="op">/</span> \  <span class="dt">ADD</span>  <span class="dv">3</span>         <span class="op">/</span>   <span class="op">/</span> \             <span class="op">/</span>                  <span class="op">/</span></span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>  <span class="op">@</span>   <span class="dt">I</span>               <span class="op">/</span>   <span class="op">@</span>   <span class="dv">2</span>           <span class="op">/</span>                  <span class="op">/</span></span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a> <span class="op">/</span> \                 <span class="op">/</span>   <span class="op">/</span> \             <span class="op">/</span>                  <span class="op">/</span></span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="dt">S</span>  <span class="dt">MUL</span>             <span class="dt">MUL</span>  <span class="dt">ADD</span> <span class="dv">3</span>           <span class="dt">MUL</span>                <span class="dt">MUL</span></span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="dt">Step</span> <span class="dv">0</span>             <span class="dt">Step</span> <span class="dv">1</span>               <span class="dt">Step</span> <span class="dv">2</span>             <span class="dt">Step</span> <span class="dv">3</span>                <span class="dt">Step</span> <span class="dv">4</span></span></code></pre></div>
-<ul>
-<li><p><strong>Step 0</strong>: This is just the initial state of the graph as explained above.
-Please note that in this state the <code>S</code> is our <em>redex</em> (i.e. the left-most ancestor of the root node) and <em>saturated</em> (i.e all three arguments of the combinator) are populated, so according to the reduction rule <code>s f g x = f x (g x)</code> we expect to see a reduction <code>S MUL I (ADD 3 2) = MUL (ADD 3 2) (I (ADD 3 2))</code> in step 1.</p></li>
-<li><p><strong>Step 1</strong>: As expected the first reduction step mutates the graph to represent <code>MUL (ADD 3 2) (I (ADD 3 2))</code>. Please note that both occurrences of <code>(ADD 3 2)</code> are represented by references to one and the same node.</p></li>
-<li><p><strong>Step 2</strong>: Now <code>MUL</code> has become the <em>redex</em> (short for reducible expression). But this time both arguments <code>(ADD 3 2)</code> and <code>I (ADD 3 2)</code> are not in normal-form and thus have to be reduced first before <code>MUL</code> can be executed. So first <code>(ADD 3 2)</code> is reduced to <code>5</code>. Please note that both references to the former <code>(ADD 3 2)</code> node now point to <code>5</code>. So in effect the <code>I (ADD 3 2)</code> node has changed to <code>I 5</code> as <code>(ADD 3 2)</code> was a shared node.</p></li>
-<li><p><strong>Step 3</strong>: next the <code>I 5</code> node is reduced according to the equation <code>i x = x</code>. That is, the reference to the application node <code>I @ 5</code> is modified to directly point to <code>5</code> instead. Please note that both arguments point to one and the same numeric value <code>5</code>.</p></li>
-<li><p><strong>Step 4</strong>: As a result of the transformation in step 3 both arguments of <code>MUL</code> are in normal-form. So now <code>MUL 5 5</code> can be performed: Accordingly the root node is now changed to <code>25</code>.</p></li>
-</ul>
-<p>Now that we have a basic understanding of the ideas behind graph-reduction we will have a closer look at the actual implementation in the following sections.</p>
-<h2 id="allocating-a-graph-with-mutable-references">Allocating a Graph with mutable references</h2>
-<p>As we have seen in the last section we will have to deal with mutable references in order to implement things like node sharing and in-place mutation of nodes.</p>
-<p>I will use the Haskell datatype <a href="https://hackage.haskell.org/package/base-4.16.0.0/docs/Data-STRef.html"><code>Data.STRef</code></a> which provides mutable references in the <code>ST</code> monad.</p>
-<p>Here comes a basic example that demonstrates the basic functionality of <code>STRef</code>. A list of numbers is summed up by adding each of them to an accumulator. The accumulator is implemented by a reference <code>acc</code> pointing to an initial value of <code>0</code>.
-Then we iterate over the list of numbers and update the value of the accumulator by adding each number <code>x</code> to it.
-Finally the result is read out from the accumulator and extracted from the ST Monad by runST. From this example we can see that <code>STRef</code>s work much like pointers in imperative languages:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Data.STRef</span>       (<span class="dt">STRef</span>, modifySTRef, newSTRef, readSTRef writeSTRef)</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Control.Monad.ST</span> (runST)</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | sum up a list of numerical values </span></span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="ot">sumST ::</span> <span class="dt">Num</span> a <span class="ot">=&gt;</span> [a] <span class="ot">-&gt;</span> a</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>sumST numbers <span class="ot">=</span> runST <span class="op">$</span> <span class="kw">do</span> <span class="co">-- runST takes stateful ST code and makes it pure.</span></span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>  acc <span class="ot">&lt;-</span> newSTRef <span class="dv">0</span>        <span class="co">-- Create an STRef (a mutable variable) to an accumulator</span></span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>  forM_ numbers <span class="op">$</span> \x <span class="ot">-&gt;</span>    <span class="co">-- iterate over all numbers</span></span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    modifySTRef acc (<span class="op">+</span> x)  <span class="co">-- add each number to what we have in acc.</span></span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>  readSTRef acc            <span class="co">-- read the value of acc, which will be returned by the runST above.</span></span></code></pre></div>
-<p>This looks promising. So now lets implement a binary graph for our compiled combinator terms with it:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">infixl</span> <span class="dv">5</span> <span class="op">:@:</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Graph</span> s</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s)) <span class="op">:@:</span> (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s))</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Comb</span> <span class="dt">Combinator</span></span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Num</span> <span class="dt">Integer</span></span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>)</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Combinator</span> <span class="ot">=</span> <span class="dt">I</span> <span class="op">|</span> <span class="dt">K</span> <span class="op">|</span> <span class="dt">S</span> <span class="op">|</span> <span class="dt">B</span> <span class="op">|</span> <span class="dt">C</span> <span class="op">|</span> <span class="dt">Y</span> <span class="op">|</span> <span class="dt">P</span> <span class="op">|</span> <span class="dt">ADD</span> <span class="op">|</span> <span class="dt">SUB</span> <span class="op">|</span> <span class="dt">MUL</span> <span class="op">|</span> <span class="dt">DIV</span> <span class="op">|</span> <span class="dt">REM</span> <span class="op">|</span> <span class="dt">SUB1</span> <span class="op">|</span> <span class="dt">EQL</span> <span class="op">|</span> <span class="dt">ZEROP</span> <span class="op">|</span> <span class="dt">IF</span></span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)</span></code></pre></div>
-<p>So we basically mimic the <code>Expr</code> data type used to encode λ-expression but without variables and lambda-abstractions. The data type <code>Combinator</code> contains constructors for combinators that we intend to implement in the graph-reduction engine.</p>
-<p>Next we define a function <code>allocate</code> that allows to allocate a ‘lambda-abstracted’ λ-expression (of type <code>Expr</code>) into a reference to a <code>Graph</code>:</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- | allocate a &#39;lambda-abstracted&#39; Expr into a referenced Graph</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ot">allocate ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">ST</span> s (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s))</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>allocate (<span class="dt">Var</span> name) <span class="ot">=</span> newSTRef <span class="op">$</span> <span class="dt">Comb</span> <span class="op">$</span> fromString name</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>allocate (<span class="dt">Int</span> val)  <span class="ot">=</span> newSTRef <span class="op">$</span> <span class="dt">Num</span> val</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>allocate (l <span class="op">:@</span> r)   <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>  lg <span class="ot">&lt;-</span> allocate l</span>
-<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  rg <span class="ot">&lt;-</span> allocate r</span>
-<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>  newSTRef <span class="op">$</span> lg <span class="op">:@:</span> rg</span>
-<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>allocate (<span class="dt">Lam</span> _ _)  <span class="ot">=</span> <span class="fu">error</span> <span class="st">&quot;lambdas must already be abstracted away!&quot;</span></span>
-<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a><span class="co">-- | lookup Combinator constructors by their names</span></span>
-<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a><span class="ot">fromString ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Combinator</span></span>
-<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;i&quot;</span>    <span class="ot">=</span> <span class="dt">I</span></span>
-<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;k&quot;</span>    <span class="ot">=</span> <span class="dt">K</span></span>
-<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;s&quot;</span>    <span class="ot">=</span> <span class="dt">S</span></span>
-<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;b&quot;</span>    <span class="ot">=</span> <span class="dt">B</span></span>
-<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;c&quot;</span>    <span class="ot">=</span> <span class="dt">C</span></span>
-<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;y&quot;</span>    <span class="ot">=</span> <span class="dt">Y</span></span>
-<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;p&quot;</span>    <span class="ot">=</span> <span class="dt">P</span></span>
-<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;+&quot;</span>    <span class="ot">=</span> <span class="dt">ADD</span></span>
-<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;sub&quot;</span>  <span class="ot">=</span> <span class="dt">SUB</span></span>
-<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;div&quot;</span>  <span class="ot">=</span> <span class="dt">DIV</span></span>
-<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;rem&quot;</span>  <span class="ot">=</span> <span class="dt">REM</span></span>
-<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;*&quot;</span>    <span class="ot">=</span> <span class="dt">MUL</span></span>
-<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;sub1&quot;</span> <span class="ot">=</span> <span class="dt">SUB1</span></span>
-<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;eq&quot;</span>   <span class="ot">=</span> <span class="dt">EQL</span></span>
-<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;is0&quot;</span>  <span class="ot">=</span> <span class="dt">ZEROP</span></span>
-<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a>fromString <span class="st">&quot;if&quot;</span>   <span class="ot">=</span> <span class="dt">IF</span></span>
-<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>fromString _c     <span class="ot">=</span> <span class="fu">error</span> <span class="op">$</span> <span class="st">&quot;unknown combinator &quot;</span> <span class="op">++</span> _c</span></code></pre></div>
-<p>So let’s see this in action:</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> optExpr <span class="ot">=</span> ((<span class="dt">Var</span> <span class="st">&quot;s&quot;</span> <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;*&quot;</span>) <span class="op">:@</span> <span class="dt">Var</span> <span class="st">&quot;i&quot;</span>) <span class="op">:@</span> ((<span class="dt">Var</span> <span class="st">&quot;+&quot;</span> <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">3</span>) <span class="op">:@</span> <span class="dt">Int</span> <span class="dv">2</span>)</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> graph <span class="ot">=</span> allocate optExpr</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> runST <span class="op">$</span> mToString graph </span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;(((S :@: MUL) :@: I) :@: ((ADD :@: 3) :@: 2))&quot;</span></span></code></pre></div>
-<p>I’m using the <code>mToString</code> helper function to render <code>ST s (STRef s (Graph s))</code> instances:</p>
-<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">mToString ::</span> <span class="dt">ST</span> s (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s)) <span class="ot">-&gt;</span> <span class="dt">ST</span> s <span class="dt">String</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>mToString g <span class="ot">=</span> toString <span class="op">=&lt;&lt;</span> g     </span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="ot">toString ::</span> <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span> <span class="dt">ST</span> s <span class="dt">String</span></span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>toString graph <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a> g <span class="ot">&lt;-</span> readSTRef graph</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a> toString&#39; g <span class="kw">where</span></span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>   toString&#39; (<span class="dt">Comb</span> c) <span class="ot">=</span> <span class="fu">return</span> <span class="op">$</span> <span class="fu">show</span> c</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>   toString&#39; (<span class="dt">Num</span> i) <span class="ot">=</span> <span class="fu">return</span> <span class="op">$</span> <span class="fu">show</span> i</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>   toString&#39; (lP <span class="op">:@:</span> rP) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>     lG <span class="ot">&lt;-</span> readSTRef lP</span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>     rG <span class="ot">&lt;-</span> readSTRef rP</span>
-<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>     lStr <span class="ot">&lt;-</span> toString&#39; lG</span>
-<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>     rStr <span class="ot">&lt;-</span> toString&#39; rG</span>
-<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>     <span class="fu">return</span> <span class="op">$</span> <span class="st">&quot;(&quot;</span> <span class="op">++</span> lStr <span class="op">++</span> <span class="st">&quot; :@: &quot;</span> <span class="op">++</span> rStr <span class="op">++</span> <span class="st">&quot;)&quot;</span> </span></code></pre></div>
-<p>Now that we have allocated our expression as an <code>ST s (STRef s (Graph s))</code> the next step will be to perform graph reduction on it.</p>
-<h2 id="performing-graph-reduction">Performing graph-reduction</h2>
-<p>First we have to compute the stack of left ancestors - or <em>spine</em> - of a graph for an efficient reduction.</p>
-<p>In the following diagram I have marked the members of this stack with <code>-&gt;</code> arrows:</p>
-<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ot">-&gt;</span>           <span class="op">@</span>                   </span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>            <span class="op">/</span> \              </span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>           <span class="op">/</span>   \               </span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>          <span class="op">/</span>     <span class="op">@</span>          </span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>         <span class="op">/</span>     <span class="op">/</span> \          </span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>        <span class="op">/</span>     <span class="op">@</span>   <span class="dv">2</span>         </span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="ot">-&gt;</span>     <span class="op">@</span>     <span class="op">/</span> \     </span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>      <span class="op">/</span> \  <span class="dt">ADD</span>  <span class="dv">3</span>    </span>
-<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a><span class="ot">-&gt;</span>   <span class="op">@</span>   <span class="dt">I</span>            </span>
-<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">/</span> \             </span>
-<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a><span class="ot">-&gt;</span> <span class="dt">S</span>  <span class="dt">MUL</span>   </span></code></pre></div>
-<p>The following function <code>spine</code> computes this left ancestors’ stack by traversing all application nodes to the left:</p>
-<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- we simply represent the stack as a list of references to graph nodes</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">LeftAncestorsStack</span> s <span class="ot">=</span> [<span class="dt">STRef</span> s (<span class="dt">Graph</span> s)]</span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="ot">spine ::</span> <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span> <span class="dt">ST</span> s (<span class="dt">LeftAncestorsStack</span> s)</span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>spine graph <span class="ot">=</span> spine&#39; graph [] </span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">where</span></span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a><span class="ot">    spine&#39; ::</span> <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span> <span class="dt">LeftAncestorsStack</span> s <span class="ot">-&gt;</span> <span class="dt">ST</span> s (<span class="dt">LeftAncestorsStack</span> s)</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    spine&#39; graph stack <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>      g <span class="ot">&lt;-</span> readSTRef graph</span>
-<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> g <span class="kw">of</span></span>
-<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>        (l <span class="op">:@:</span> _r) <span class="ot">-&gt;</span> spine&#39; l (graph <span class="op">:</span> stack)</span>
-<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>        _          <span class="ot">-&gt;</span> <span class="fu">return</span> (graph <span class="op">:</span> stack)</span></code></pre></div>
-<p>Using this <code>spine</code> function we can implement a function <code>step</code> that performs a single reduction step on a <code>Graph</code> node:</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ot">step ::</span> <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span> <span class="dt">ST</span> s ()</span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>step graph <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  (top<span class="op">:</span>stack) <span class="ot">&lt;-</span> spine graph</span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  node <span class="ot">&lt;-</span> readSTRef top</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">case</span> node <span class="kw">of</span></span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    (<span class="dt">Comb</span> k) <span class="ot">-&gt;</span> reduce k stack</span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    _        <span class="ot">-&gt;</span> <span class="fu">return</span> ()</span></code></pre></div>
-<p>If a combinator is found in redex position, <code>reduce</code> is called to perform the actual reduction work according to the combinator specific reduction rules.</p>
-<p>Let’s study this for some of the combinators, starting with the most simple one, <code>I x = x</code>:</p>
-<div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>p  <span class="ot">-&gt;</span>   <span class="op">@</span>   </span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>       <span class="op">/</span> \</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>   <span class="ot">-&gt;</span> <span class="dt">I</span>   x</span></code></pre></div>
-<div class="sourceCode" id="cb26"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reduce ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">LeftAncestorsStack</span> s <span class="ot">-&gt;</span> <span class="dt">ST</span> s ()</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>reduce <span class="dt">I</span> (p <span class="op">:</span> _) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  (_I <span class="op">:@:</span> xP) <span class="ot">&lt;-</span> readSTRef p</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  xVal <span class="ot">&lt;-</span> readSTRef xP</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>  writeSTRef p xVal</span></code></pre></div>
-<p>In this case a reference <code>p</code> to <code>(I :@: xP )</code> is on top of the stack. The actual value of x is read from <code>xP</code> with <code>readSTRef</code> and than <code>p</code> is made to point to this value by using <code>writeSTRef</code>.</p>
-<p>The reduction of <code>S f g x = f x (g x)</code> is already a bit more involved:</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>            <span class="op">|</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>p3 <span class="ot">-&gt;</span>       <span class="op">@</span></span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>           <span class="op">/</span> \</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>p2 <span class="ot">-&gt;</span>     <span class="op">@</span>   x</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>         <span class="op">/</span> \</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>p1 <span class="ot">-&gt;</span>   <span class="op">@</span>   g</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>       <span class="op">/</span> \</span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>   <span class="ot">-&gt;</span> <span class="dt">S</span>   f</span></code></pre></div>
-<div class="sourceCode" id="cb28"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>reduce <span class="dt">S</span> (p1 <span class="op">:</span> p2 <span class="op">:</span> p3 <span class="op">:</span> _) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  (_S <span class="op">:@:</span> fP) <span class="ot">&lt;-</span> readSTRef p1</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>  (_  <span class="op">:@:</span> gP) <span class="ot">&lt;-</span> readSTRef p2</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  (_  <span class="op">:@:</span> xP) <span class="ot">&lt;-</span> readSTRef p3</span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>  node1 <span class="ot">&lt;-</span> newSTRef <span class="op">$</span> fP <span class="op">:@:</span> xP</span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>  node2 <span class="ot">&lt;-</span> newSTRef <span class="op">$</span> gP <span class="op">:@:</span> xP</span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>  writeSTRef p3 (node1 <span class="op">:@:</span> node2)</span></code></pre></div>
-<p>In this case reference to f (<code>fP</code>), g (<code>gP</code>) and x (<code>xP</code>) are obtained. Then a new application node is created that represents <code>((f @ x) @ (g @ x))</code>. Then <code>p3</code> is made to point to this new node.</p>
-<p>Binary arithmentic combinators like <code>ADD</code> and <code>MUL</code> are implemented as follows:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>reduce <span class="dt">ADD</span> (p1 <span class="op">:</span> p2 <span class="op">:</span> _) <span class="ot">=</span> binaryMathOp (<span class="op">+</span>) p1 p2</span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>reduce <span class="dt">MUL</span> (p1 <span class="op">:</span> p2 <span class="op">:</span> _) <span class="ot">=</span> binaryMathOp (<span class="op">*</span>) p1 p2</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="ot">binaryMathOp ::</span></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>  (<span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>) <span class="ot">-&gt;</span> <span class="co">-- ^ a binary arithmetic function on Integers like (+)</span></span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span>               <span class="co">-- ^ first node on the spine stack</span></span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span>               <span class="co">-- ^ second node on spine stack</span></span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>  <span class="dt">ST</span> s ()                            </span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>binaryMathOp op p1 p2 <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>  (_ <span class="op">:@:</span> xP) <span class="ot">&lt;-</span> readSTRef p1</span>
-<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>  (_ <span class="op">:@:</span> yP) <span class="ot">&lt;-</span> readSTRef p2</span>
-<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>  (<span class="dt">Num</span> xVal) <span class="ot">&lt;-</span> (readSTRef <span class="op">&lt;=&lt;</span> normalForm) xP  <span class="co">-- reduce xP to normal form and obtain its value as xVal</span></span>
-<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>  (<span class="dt">Num</span> yVal) <span class="ot">&lt;-</span> (readSTRef <span class="op">&lt;=&lt;</span> normalForm) yP  <span class="co">-- reduce yP to normal form and obtain its value as yVal</span></span>
-<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>  writeSTRef p2 (<span class="dt">Num</span> <span class="op">$</span> xVal <span class="ot">`op`</span> yVal)         <span class="co">-- apply op on xVal and yVal, modify p2 to point to the resulting value</span></span></code></pre></div>
-<p>The interesting bit here is that the arithmetic combinators are <em>strict</em>, that is they require their arguments to be in normalform. (Please note that <code>S</code>, <code>I</code>, <code>K</code>, etc. don’t have this requirement. They are <em>non-strict</em> or <em>lazy</em>).</p>
-<p><code>normalForm</code> just applies <code>step</code> in a loop while the graph has not been reduced to a combinator or an integer:</p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="ot">normalForm ::</span> <span class="dt">STRef</span> s (<span class="dt">Graph</span> s) <span class="ot">-&gt;</span> <span class="dt">ST</span> s (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s))</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>normalForm graph <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>  step graph</span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  g <span class="ot">&lt;-</span> readSTRef graph</span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">case</span> g <span class="kw">of</span></span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    _lP <span class="op">:@:</span> _rP <span class="ot">-&gt;</span> normalForm graph</span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Comb</span> _com   <span class="ot">-&gt;</span> <span class="fu">return</span> graph</span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Num</span> _n      <span class="ot">-&gt;</span> <span class="fu">return</span> graph</span></code></pre></div>
-<p>Using a helper function <code>reduceGraph</code> that computes the normal-form of a graph while staying entirely in the <code>ST</code>-Monad, we can finally reduce our tiny toy graph:</p>
-<div class="sourceCode" id="cb31"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ot">reduceGraph ::</span> <span class="dt">ST</span> s (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s)) <span class="ot">-&gt;</span> <span class="dt">ST</span> s (<span class="dt">STRef</span> s (<span class="dt">Graph</span> s))</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>reduceGraph graph <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>  gP <span class="ot">&lt;-</span> graph</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>  normalForm gP</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> runST <span class="op">$</span> mToString graph</span>
-<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;(((S :@: MUL) :@: I) :@: ((ADD :@: 3) :@: 2))&quot;</span></span>
-<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>ghci<span class="op">&gt;</span> runST <span class="op">$</span> mToString <span class="op">$</span> reduceGraph graph</span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;25&quot;</span></span></code></pre></div>
-<h2 id="recursion">Recursion</h2>
-<p>λ-calculus does not directly support recursion using self-referential functions <a href="https://sookocheff.com/post/fp/recursive-lambda-functions/">(see this nice exposition)</a>. That’s why we need a fixed-point combinator to realize recursive operation. Here once again the definition of the factorial function that makes use of the <code>Y</code>-Combinator to implement recursive behaviour:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>    <span class="ot">=</span> λf <span class="op">.</span> (λx <span class="op">.</span> x x)(λx <span class="op">.</span> f(x x))</span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>fact <span class="ot">=</span> <span class="dt">Y</span>(\f n <span class="ot">-&gt;</span> <span class="kw">if</span> (is0 n) <span class="dv">1</span> (<span class="op">*</span> n (f (sub1 n))))</span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> fact <span class="dv">10</span></span></code></pre></div>
-<p>With only a few lines of equational reasoning we can demonstrate the special property of the <code>Y</code>-combinator when applied to any function <code>g</code>:</p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span> g <span class="ot">=</span> (λf<span class="op">.</span>(λx<span class="op">.</span>x x)(λx<span class="op">.</span>f(x x))) g  <span class="co">-- (1) by definition of Y</span></span>
-<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    <span class="ot">=</span> (λx<span class="op">.</span>g (x x))(λx<span class="op">.</span>g (x x))    <span class="co">-- (2) by function application of λf</span></span>
-<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    <span class="ot">=</span> g((λx<span class="op">.</span>g (x x))(λx<span class="op">.</span>g (x x))) <span class="co">-- (3) by function application of λx.g(x x) to λx.g(x x)</span></span>
-<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    <span class="ot">=</span> g(<span class="dt">Y</span> g)                      <span class="co">-- (4) by equation (2)</span></span></code></pre></div>
-<p>Applying equation <code>(4)</code> repeatedly will lead to:</p>
-<div class="sourceCode" id="cb34"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span> g <span class="ot">=</span> g(g(<span class="dt">Y</span> g))                    <span class="co">-- (5) by equation (4)</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="ot">=</span> g(<span class="op">...</span>g(<span class="dt">Y</span> g) <span class="op">...</span>)             <span class="co">-- (6) by repeatedly applying (4)</span></span></code></pre></div>
-<p>In this way the <code>Y</code>-combinator achieves recursion by reproducing a (self-reproducing) copy of the function’s self-application with each application of <code>(4)</code>.</p>
-<p>This self-reproducing pattern becomes even more visible when looking at the graph-structure of the reduction of <code>(Y g)</code>:</p>
-<div class="sourceCode" id="cb35"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>                                            __</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>  <span class="op">@</span>    <span class="op">==&gt;</span>    <span class="op">@</span>     <span class="op">==&gt;</span>   <span class="op">@</span>    <span class="op">==&gt;</span>  <span class="op">...</span>   <span class="op">@</span>   \</span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a> <span class="op">/</span> \         <span class="op">/</span> \         <span class="op">/</span> \             <span class="op">/</span> \__<span class="op">/</span></span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>   g       g   <span class="op">@</span>       g   <span class="op">@</span>           g</span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>               <span class="op">/</span> \         <span class="op">/</span> \</span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>              <span class="dt">Y</span>   g       g   <span class="op">@</span></span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>                             <span class="op">/</span> \</span>
-<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>                            <span class="dt">Y</span>   g</span></code></pre></div>
-<p>One can see how at each application of <code>(4)</code> another copy of (Y g) is generated and incorporated into the graph as an argument of g.</p>
-<p>The last step of the diagram shows that - in the graph - self-reproduction can be achieved by simply bending the argument pointer back to the application node.</p>
-<p>This realization leads us to the following implementation of the Y-combinator:</p>
-<div class="sourceCode" id="cb36"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>reduce <span class="dt">Y</span> (p1 <span class="op">:</span> _) <span class="ot">=</span> <span class="kw">do</span></span>
-<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>  (_YP <span class="op">:@:</span> gP) <span class="ot">&lt;-</span> readSTRef p1</span>
-<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>  writeSTRef p1 (gP <span class="op">:@:</span> p1)</span></code></pre></div>
-<p>Using this implementation of the Y-combinator instead of the source level defined version <code>Y = λf.(λx.x x)(λx.f(x x))</code> reduces the execution time for <code>fact 10000</code> by a factor of about 250.</p>
-<p>The <a href="https://github.com/thma/lambda-ski/blob/main/src/LambdaToSKI.hs">sourcecode for this section can be found here</a>.</p>
-<h2 id="next-steps">Next steps</h2>
-<p>Here are some ideas for possible future extensions and improvements.</p>
-<ul>
-<li>Extending this very basic setup to a fully working pogramming environment with a REPL</li>
-<li>Implement direct and mutual recursion (i.e. <code>letrec</code>) for global function definitions</li>
-<li>experimemnt with different bracket abstraction algorithms to improve object code size and execution time.</li>
-<li>Implement bracket abstraction from λ-expressions to <a href="https://thma.github.io/posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html">closed cartesian categories</a> and extend the graph-reduction to also cover the resulting combinators <code>apply</code> and <code>(△)</code>.</li>
-<li>extend the language to include lists, maybe even provide it with a LISPKIT frontend.</li>
-<li>Add support for implicit and explicit parallelism of the graph-reduction engine.
-(implicit parallelism for strict operations, and an explicit <code>P</code>-combinator)</li>
 </ul>
 ]]></summary>
 </entry>
