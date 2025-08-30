@@ -10,15 +10,15 @@
         <email>Thomas.Mahler@ista.com</email>
         
     </author>
-    <updated>2025-08-15T00:00:00Z</updated>
+    <updated>2025-08-30T00:00:00Z</updated>
     <entry>
     <title>Embedding MicroHs</title>
-    <link href="https://thma.github.io//posts/2025-08-15-Embedding-MicroHs.html" />
-    <id>https://thma.github.io//posts/2025-08-15-Embedding-MicroHs.html</id>
-    <published>2025-08-15T00:00:00Z</published>
-    <updated>2025-08-15T00:00:00Z</updated>
+    <link href="https://thma.github.io//posts/2025-08-30-Embedding-MicroHs.html" />
+    <id>https://thma.github.io//posts/2025-08-30-Embedding-MicroHs.html</id>
+    <published>2025-08-30T00:00:00Z</published>
+    <updated>2025-08-30T00:00:00Z</updated>
     <summary type="html"><![CDATA[<div class="info">
-    <em>Posted on August 15, 2025
+    <em>Posted on August 30, 2025
     
         by Thomas Mahler
     </em><br/><br/>
@@ -26,7 +26,9 @@
 
 <p><a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20" ></a></p>
 <h2 id="abstract">Abstract</h2>
-<p>This post shows how to embed Lennart Augustsson’s MicroHs—a compact, bootstrappable Haskell based on combinatory logic—as a backend for an experimental compiler. It covers generating MicroHs‑compatible combinator expressions, emitting the out.comb format, and executing the result with the MicroHs runtime. Benchmarks demonstrate substantial speedups over a custom graph‑reduction engine. The post also outlines contributions that expose MicroHs as an embeddable library and FFI wrapper, enabling compilation and execution from GHC programs and making embedded graph reduction practical in larger applications.</p>
+<p>This post shows how to use Lennart Augustsson’s MicroHs as an execution backend for a small combinator compiler and how to embed the MicroHs compiler and runtime into GHC-built programs.</p>
+<p>It covers generating MicroHs‑compatible combinator expressions, emitting valid out.comb format and executing the result with the MicroHs runtime. Benchmarks demonstrate substantial speedups over a self-made graph‑reduction engine. The results suggest possible further gains from bulk combinators and optimization of the mhseval-runtime.</p>
+<p>The post also outlines contributions that expose MicroHs as an embeddable library and FFI wrapper, enabling compilation and execution from GHC programs and making embedded graph reduction practical in larger applications.</p>
 <h2 id="introduction">Introduction</h2>
 <p>Attentive readers of my blog will have noticed that I am a big fan of combinatory logic and graph reduction in the implementation of functional languages.</p>
 <p>Some time ago, I became aware of <a href="https://github.com/augustss/MicroHs?tab=readme-ov-file#micro-haskell">Lennart Augustsson’s MicroHs project</a>, which provides an alternative Haskell compiler that targets a runtime environment based on combinatory logic and graph reduction.</p>
@@ -334,10 +336,11 @@ Result: #3628800</code></pre>
 <p>My first expection was met, however for a 3-argument function like <code>tak</code> MicroHs is only 10% faster.</p>
 <p>The second expectation was clearly not met for the <code>tak</code>-function!
 In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">post on optimizing bracket abstraction</a> I have demonstrated how the code size of classic abstraction algorithms will grow quadratically with the number of variables of a function. In that post I have also shown how advanced approaches like <a href="https://okmij.org/ftp/tagless-final/ski.pdf">Kiselyovs Bulk-Combinators</a> can significantly improve this behaviour.</p>
-<p>So evaluating if Bulk-combinators could improve performance of MicroHs would be an interesting topic.</p>
-<p>Looking at the compilation output of the <code>fib 37</code> program, there seems to very little room for improvement as the generated code is already quite dense:</p>
+<p>Evaluating whether bulk combinators can speed up MicroHs is a promising next step.</p>
+<p>For the. <code>fib 37</code> program, the compiler already emits quite compact code:</p>
 <div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">R</span> <span class="dv">1</span>(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">C</span> <span class="dt">LEQ</span> <span class="dv">1</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">ADD</span>)(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>)))(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">2</span>) <span class="dt">B</span>))))) <span class="dv">37</span></span></code></pre></div>
-<p>For such programs we see that the GHC equivalent still runs 8.7 times faster. So it would be great if the reductions per seconds rate of <code>mhseval</code> could be improved.</p>
+<p>Even so, the GHC version runs about 8.7× faster.
+For programs like this, increasing mhseval’s reductions per second would be a beneficial undertaking!</p>
 <h2 id="using-the-ffi-wrapper-to-compile-and-execute-haskell-programs">Using the FFI wrapper to compile and execute Haskell programs</h2>
 <p>In this blog post, I have so far only used the parts of MiscroHs that deal either directly with the generation of Combinator code or with the execution of Combinator code.</p>
 <p>But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way:</p>
@@ -382,8 +385,8 @@ In order to improve this sketchy solution I integrated the MhsEval wrapper more 
 <h2 id="conclusion">Conclusion</h2>
 <p>In this post, I’ve demonstrated how to successfully integrate MicroHs as a backend for my toy combinator compiler, showcasing the elegance and power of combinatory logic as a compilation target. By adapting my compiler to emit MicroHs-compatible code, I was able to leverage the robust MicroHs graph-reduction runtime as an execution backend.</p>
 <p>The performance benchmarks reveal that MicroHs consistently outperforms my toy runtime implementations, with speedups ranging from 10% (for tak) to 2.6x (for Ackermann).
-There is still a huge gap to GHC compiled code.</p>
-<p>The work also highlights the remarkable achievement of the MicroHs project itself: a complete, bootstrappable Haskell compiler that fits in a compact, hackable codebase while demonstrating sophisticated compilation techniques.
+There is still a huge gap to GHC compiled code. It could be promising to study whether techniques like Bulk-Combinators could improve execution speed of MicroHs. In addition to this substantial optimizations to the <code>mhseval</code> runtime will be needed to reach the performance of GHC compiled programs.</p>
+<p>The post also highlighted the remarkable achievement of the MicroHs project itself: a complete, bootstrappable Haskell compiler that fits in a compact, hackable codebase while demonstrating sophisticated compilation techniques.
 The presented FFI wrapper makes it possible to embed the complete MicroHs compiler and runtime within any GHC-compiled Haskell program. This opens up interesting possibilities for embedded haskell scripting and runtime code generation.</p>
 <p>For anyone interested in compiler implementation, functional programming foundations, or combinatory logic, MicroHs provides an excellent playground for experimentation. The ability to embed it within larger Haskell applications makes it particularly valuable for research and teaching purposes.</p>
 <h2 id="appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">Appendix: my earlier posts on combinatory logic and graph-reduction</h2>
