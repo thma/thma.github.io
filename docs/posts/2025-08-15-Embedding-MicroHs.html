@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>lambda is not a four letter word - Embedding MicroHs</title>
+    <link rel="stylesheet" type="text/css" href="../css/composeconference.css" />
+    <link rel="alternate" type="application/atom+xml" href="../atom.xml" />
+    <link rel="alternate" type="application/rss+xml" href="../rss.xml" />
+
+    <!-- MATH JAX-->
+    <script type="text/javascript" src="../static/mathjax/tex-mml-chtml.js"></script>
+
+    <!-- favicon stuff-->
+    <link rel="apple-touch-icon" sizes="57x57" href="../apple-icon-57x57.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="../apple-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="../apple-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="../apple-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="../apple-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="../apple-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="../apple-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="../apple-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-icon-180x180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../android-icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96x96.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+    <meta name="theme-color" content="#ffffff">
+</head>
+<body>
+
+<header>
+    <div class="heading">
+        <div class="logo">
+            <div style="float: left">
+                <img src="../img/lambda-150.png" alt="\" height="40px" valign="bottom" />
+            </div>
+            <div>
+                <a href="../">&nbsp;lambda is not a four letter word</a>
+            </div>
+        </div>
+        <nav>
+            <a href="../">home</a> | <a href="../about.html">about</a> | <a href="https://github.com/thma"><img valign="middle" src="../img/GitHub-Mark-32px.png" height="20px" alt="GitHub"></a>
+        </nav>
+    </div>
+</header>
+
+<main class="markdown-body" role="main">
+    <h1>Embedding MicroHs</h1>
+    <div class="info">
+    <em>Posted on August 15, 2025
+    
+        by Thomas Mahler
+    </em><br /><br />
+</div>
+
+<p><a href="https://github.com/thma/lambda-ski"><img src="https://thma.github.io/img/forkme.png" height="20"></a></p>
+<h2 id="abstract">Abstract</h2>
+<p>This post shows how to embed Lennart Augustsson’s MicroHs—a compact, bootstrappable Haskell based on combinatory logic—as a backend for an experimental compiler. It covers generating MicroHs‑compatible combinator expressions, emitting the out.comb format, and executing the result with the MicroHs runtime. Benchmarks demonstrate substantial speedups over a custom graph‑reduction engine. The post also outlines contributions that expose MicroHs as an embeddable library and FFI wrapper, enabling compilation and execution from GHC programs and making embedded graph reduction practical in larger applications.</p>
+<h2 id="introduction">Introduction</h2>
+<p>Attentive readers of my blog will have noticed that I am a big fan of combinatory logic and graph reduction in the implementation of functional languages.</p>
+<p>Some time ago, I became aware of <a href="https://github.com/augustss/MicroHs?tab=readme-ov-file#micro-haskell">Lennart Augustsson’s MicroHs project</a>, which provides an alternative Haskell compiler that targets a runtime environment based on combinatory logic and graph reduction.</p>
+<p>MicroHs is an awesome project for several reasons:</p>
+<ul>
+<li><p>It demonstrates how a complex high-level language like Haskell can be translated and executed efficiently using bracket abstraction, Scott encoding, combinatory logic and a graph reduction runtime.</p></li>
+<li><p>It outlines an approach for bootstrapping a Haskell compiler using only a C compiler as a prerequisite. This represents a significant step for bootstrapping the GHC compiler in the sense of the <a href="https://www.bootstrappable.org/projects.html">Bootstrappable project</a>.</p></li>
+<li><p>The entire codebase remains compact and “hackable”, making it an ideal textbook example for a functional language compiler.</p></li>
+</ul>
+<p>While studying the MicroHs codebase I noticed that it uses compilation techniques, combinatory logic expressions and graph reduction mechanics that are quite close to the concepts that I presented in <a href="#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">some of my previous blog posts on this topic</a>. I was particularly impressed by the MicroHs graph-reduction runtime implemented in C.</p>
+<p>So I came up with the idea of adjusting my toy compilation system to generate object code that can be executed with the MicroHs runtime system.</p>
+<p>In this blog post I’ll explain what I did to achieve this goal. I’ll also explain briefly the two pull requests that I added to MicroHs, which allow to embed MicroHs into Haskell code copiled with GHC.</p>
+<h2 id="using-the-microhs-runtime-as-a-backend-for-my-toy-compiler">Using the MicroHs Runtime as a backend for my toy compiler</h2>
+<p>MicroHs is using a set of combinators that is quite close to those used in my toy language implementation.</p>
+<p>The only difference I noticed was in the handling of conditional expressions. My toy compiler was using a dedicated <code>IF</code> combinator, whereas MicroHs is providing a much more generic and flexible system that makes clever use of combinators <code>A</code> and <code>K</code>.</p>
+<p>This gave me confidence that it shouldn’t be too difficult to use the MicroHs runtime as a target to my compiler.</p>
+<h3 id="getting-rid-of-the-if-combinator">Getting rid of the IF combinator</h3>
+<p>As my toy language is just dealing with functions over integers I tried to keep thngs as easy as possible and thus modelled <code>True</code> as <code>1</code> and <code>False</code> as <code>0</code>.
+So for example in the <a href="https://github.com/thma/lambda-ski/blob/main/src/HhiReducer.hs">HhiReducer</a> the equality test <code>eql</code> is defined as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ot">eql ::</span> (<span class="dt">Eq</span> a, <span class="dt">Num</span> p) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> p</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>eql n m <span class="ot">=</span> <span class="kw">if</span> n <span class="op">==</span> m <span class="kw">then</span> <span class="dv">1</span> <span class="kw">else</span> <span class="dv">0</span></span></code></pre></div>
+<p>The <code>IF</code>-Combinator takes three arguments <code>condition</code>, <code>thenExpr</code> and <code>elseExpr</code>. The semantics is simple: if <code>condition</code> evaluates to <code>1</code>, <code>thenExpr</code> is evaluated alse <code>elseExpr</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">CFun</span> (\(<span class="dt">CInt</span> condition) <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \thenExpr <span class="ot">-&gt;</span> <span class="dt">CFun</span> <span class="op">$</span> \elseExpr <span class="ot">-&gt;</span> </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">if</span> condition <span class="op">==</span> <span class="dv">1</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="kw">then</span> thenExpr </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">else</span> elseExpr)</span></code></pre></div>
+<p>MicroHs is encoding boolean values quite differently:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">True</span> <span class="ot">=</span> <span class="dt">A</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">False</span> <span class="ot">=</span> <span class="dt">K</span></span></code></pre></div>
+<p>Where <code>A</code> and <code>K</code> are Combinators defined as follows:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="dt">K</span> x y <span class="ot">=</span> x </span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="dt">A</span> x y <span class="ot">=</span> y</span></code></pre></div>
+<p>So in this Encoding <code>True</code> and <code>False</code> can be used as selector functions to either pick the <code>thenExpr</code> or the <code>elseExpr</code> for evaluation.</p>
+<p>We can apply this feature to eliminate the <code>IF</code>-combinator. We will achieve this by using a new function <code>desugarIf</code> before performing bracket abstraction. This function will desugar <code>If</code>-expressions to Scott encoded boolean applications. It will detect sourcecode patterns <code>if condition thenExpr elseExpr</code> and transforms it to: <code>condition elseExpr thenExpr</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">desugarIf ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>desugarIf (((<span class="dt">Var</span> <span class="st">&quot;if&quot;</span> <span class="ot">`App`</span> condition) <span class="ot">`App`</span> thenExpr) <span class="ot">`App`</span> elseExpr) <span class="ot">=</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  (desugarIf condition <span class="ot">`App`</span> desugarIf elseExpr) <span class="ot">`App`</span> desugarIf thenExpr</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>desugarIf (<span class="dt">App</span> e1 e2) <span class="ot">=</span> <span class="dt">App</span> (desugarIf e1) (desugarIf e2)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>desugarIf (<span class="dt">Lam</span> x e) <span class="ot">=</span> <span class="dt">Lam</span> x (desugarIf e)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>desugarIf expr <span class="ot">=</span> expr  <span class="co">-- Var, Int remain unchanged</span></span></code></pre></div>
+<p>When <code>condition</code> evaluates to <code>True</code> (i.e. <code>A</code>) the second argument (<code>thenExpr</code>) will be selected.
+When <code>condition</code>evaluates to <code>False</code> (i.e. <code>K</code>) the first argument (<code>elseExpr</code>) will be selected.</p>
+<p>To make this work we will have to change all comparison functions to return <code>A</code>and <code>K</code>, like in the following snippet from the HhiReducer:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">eql ::</span> (<span class="dt">Eq</span> a) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">CExpr</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>eql n m <span class="ot">=</span> <span class="kw">if</span> n <span class="op">==</span> m <span class="kw">then</span> trueCExpr <span class="kw">else</span> falseCExpr</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- | Helper functions for Scott-encoded booleans</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="ot">trueCExpr ::</span> <span class="dt">CExpr</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>trueCExpr <span class="ot">=</span> link primitives (translate (<span class="dt">Com</span> <span class="dt">A</span>))</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="ot">falseCExpr ::</span> <span class="dt">CExpr</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>falseCExpr <span class="ot">=</span> link primitives (translate (<span class="dt">Com</span> <span class="dt">K</span>))</span></code></pre></div>
+<p>Let’s have a closer look how this can be very handy when compiling conditional expressions to efficient code. Let’s illustrate this with an example of my improved toy compiler. Let’s say we have a very simple <code>main</code>-expression:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">Int</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">if</span> (eql <span class="dv">0</span> <span class="dv">1</span>) <span class="dv">23</span> <span class="dv">42</span></span></code></pre></div>
+<p>With the new desugaring this will compiled to the following combinator expression. Please note that <code>thenExpr</code> and <code>elseExpr</code> have been swapped by <code>desugarIf</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">1</span> <span class="dv">42</span> <span class="dv">23</span></span></code></pre></div>
+<p>Now let`s have a look at the combinator-reduction of this expression:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">1</span> <span class="dv">42</span> <span class="dv">23</span> </span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="dt">K</span> <span class="dv">42</span> <span class="dv">23</span><span class="op">.</span>       <span class="co">-- by reducing EQL 0 1 to K (representing 'False')</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="dv">42</span>             <span class="co">-- by reducing K x y to x</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- likewise for the 'True' case:</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="dt">EQL</span> <span class="dv">0</span> <span class="dv">0</span> <span class="dv">42</span> <span class="dv">23</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="dt">A</span> <span class="dv">42</span> <span class="dv">23</span><span class="op">.</span>       <span class="co">-- by reducing EQL 0 0 to A (representing 'True')</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="dv">23</span>             <span class="co">-- by reducing A x y to y</span></span></code></pre></div>
+<h3 id="producing-microhs-compatible-combinator-code-from-my-toy-compiler">producing MicroHs compatible combinator code from my toy compiler</h3>
+<p>After fixing the incompatibility in the handling of conditional expressions there is is only one task left: We’ll have to translate the combinator expressions generated by my compiler to a valid MicroHs combinator program. This is done in the <a href="https://github.com/thma/lambda-ski/blob/main/src/MicroHsExp.hs">MicroHsExp</a> module.</p>
+<p>The first step is to map from my <code>CLTerm.CL</code>-terms to <code>MicroHs.Exp</code>-terms.
+By looking at the type definitions we can see that the mapping will be straightforward:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- CLTerm.CL:</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">CL</span> <span class="ot">=</span> </span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">Com</span> <span class="dt">Combinator</span> </span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">INT</span> <span class="dt">Integer</span> </span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">CL</span> <span class="op">:@</span> <span class="dt">CL</span> </span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Data</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co">-- MicroHs.Exp:</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Exp</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> <span class="dt">Var</span> <span class="dt">Ident</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">App</span> <span class="dt">Exp</span> <span class="dt">Exp</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lam</span> <span class="dt">Ident</span> <span class="dt">Exp</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="op">|</span> <span class="dt">Lit</span> <span class="dt">Lit</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">deriving</span> (<span class="dt">Eq</span>)  </span></code></pre></div>
+<p>The <code>Exp</code> data type is used to store desugared λ-Terms as well as combinator terms. That is the reason why it allows free variables (<code>Var</code>) and λ-terms (<code>Lam</code>). But after running bracket abstraction over such a term it will only <code>App</code> and <code>Lit</code> constructors.</p>
+<p>With this knowledge we can define a <code>toMhsExp :: CL -&gt; Exp</code> function:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">CLTerm</span> (<span class="dt">CL</span>(..))</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.Exp</span> (<span class="dt">Exp</span>(..))</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.Expr</span> (<span class="dt">Lit</span>(..))</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="ot">toMhsExp ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">Exp</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>toMhsExp (<span class="dt">Com</span> c) <span class="ot">=</span> <span class="dt">Lit</span> (<span class="dt">LPrim</span> (combToMhscomb c))</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>toMhsExp (<span class="dt">INT</span> i) <span class="ot">=</span> <span class="dt">Lit</span> (<span class="dt">LInt</span> (<span class="fu">fromIntegral</span> i))     <span class="co">-- LInt only works with Int</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>toMhsExp (t <span class="op">:@</span> u) <span class="ot">=</span> <span class="dt">App</span> (toMhsExp t) (toMhsExp u)</span></code></pre></div>
+<p>The interesting part here is that both integers and combinators are treated as <code>Lit</code> instances with specific constructors <code>LInt</code> and <code>LPrim</code>.</p>
+<p>In order to be able to import MicroHs code I contributed a PR which exposes the MicroHs source code as a library in the <a href="https://github.com/augustss/MicroHs/blob/master/MicroHs.cabal">MicroHs.cabal</a> file. Now we can simply embed the MicroHs compiler (or parts of it) in any Haskell program by adding <code>MicroHs</code>as a dependency to our <code>.cabal</code> or <code>package.yaml</code> files.</p>
+<p>Mapping the combinators and primops of my compiler to MicroHs can simply be achieved by <code>show</code>, only for a few arithmetic and comparison primops we need specific translations as MicroHs uses <a href="https://github.com/augustss/MicroHs/blob/master/ghc/PrimTable.hs#L32">other names for them</a>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">CLTerm</span> (<span class="dt">Combinator</span>(..))</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ot">combToMhscomb ::</span> <span class="dt">Combinator</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">ADD</span> <span class="ot">=</span> <span class="st">&quot;+&quot;</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">SUB</span> <span class="ot">=</span> <span class="st">&quot;-&quot;</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">MUL</span> <span class="ot">=</span> <span class="st">&quot;*&quot;</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">DIV</span> <span class="ot">=</span> <span class="st">&quot;/&quot;</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">REM</span> <span class="ot">=</span> <span class="st">&quot;rem&quot;</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">EQL</span> <span class="ot">=</span> <span class="st">&quot;==&quot;</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>combToMhscomb <span class="dt">GEQ</span> <span class="ot">=</span> <span class="st">&quot;&gt;=&quot;</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>combToMhscomb c <span class="ot">=</span> <span class="fu">show</span> c</span></code></pre></div>
+<h3 id="translating-my-combinator-expressions-into-mhs-out.comb-format">translating my combinator expressions into MHS out.comb format</h3>
+<p>The final step of producing a valid MicroHs <code>out.comb</code> file is even simpler.
+MicroHs defines a function <code>toStringCMdl</code>, which takes a list of definitions (i.e. all functions, expressions and CAFs defined in a haskell program) and an expression representing the <code>main</code>-expression of a Haskell program as input. The result is a tuple with the number of definitions, a list of all foreign export identifiers, and the program as a string. This last element of the tuple will contain the contain the actual combinator code, i.e. the contents of an <code>out.comb</code>file.</p>
+<p>Even when compiling a program with many top-level definitions my toy compiler just returns the compiled <code>main</code> expression (with all calls to other toplevel definitions expanded to combinator code). As we we don’t have any top-level definitions left after compilation we just hand over an empty list</p>
+<p>With this knowledge we can can compile our <code>CL</code>-term to a valid MicroHs program with very little effort:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHs.ExpPrint</span> (toStringCMdl)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ot">toMhsPrg ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>toMhsPrg cl <span class="ot">=</span> </span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    definitions <span class="ot">=</span> [] </span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    (n, exps, prg) <span class="ot">=</span> toStringCMdl (definitions, toMhsExp cl)</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>   <span class="kw">in</span> prg</span></code></pre></div>
+<h3 id="a-first-test-drive">A first test drive</h3>
+<p>Now it’s time for a first test drive of our solution:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">factorial ::</span> <span class="dt">String</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>factorial <span class="ot">=</span> [r| </span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  fact = y(\f n. if (eql n 0) 1 (* n (f (- n 1))))</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  main = fact 10</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>|]</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> source <span class="ot">=</span> factorial</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>      env <span class="ot">=</span> parseEnvironment source</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>      expr' <span class="ot">=</span> compileEta env<span class="op">.</span>  <span class="co">-- compileEta is a good default for dense combinator code</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>      prg <span class="ot">=</span> toMhsPrg expr'     <span class="co">-- use MicroHs.ExpPrint.toStringCMdl to produce MicroHs code    </span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Factorial compiled to combinator expression:\n&quot;</span> <span class="op">++</span> <span class="fu">show</span> expr'</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;The resulting MicroHs program: \n&quot;</span> <span class="op">++</span> prg</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">writeFile</span> <span class="st">&quot;out.comb&quot;</span> prg<span class="op">.</span>    <span class="co">-- out.comb is the default file name for code executed by mhseval</span></span></code></pre></div>
+<pre><code>ghci&gt; main
+Factorial compiled to combinator expression: 
+Y(R 1(B C(B(S(C EQL 0))(B(S MUL)(R(C SUB 1) B))))) 10
+The resulting MicroHs program: 
+v8.2
+0
+Y R #1 @B C @B S C == @#0 @@@B S * @@R C - @#1 @@B @@@@@@#10 @ }</code></pre>
+<p>Please note that <code>Int</code> literals are encoded with a leading <code>#</code>in MicroHs code format, like <code>#0</code>, <code>#1</code>and <code>#10</code> in the program above.</p>
+<p>Now we use the MicroHs evaluator <code>mhseval</code> to run this program written to the file <code>out.comb</code>:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span><span class="op">&gt;</span> mhseval </span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co">#3628800</span></span></code></pre></div>
+<p>I think this is quite impressive: MicroHs knows all the combinators my toy compiler is emmitting, including the <code>Y</code>-combinator
+and the reduction works in the expected way and produces the correct result!</p>
+<p>So using the MicroHs evaluator as a runtime environment for combinator code generated by other compilers seems quite feasible!</p>
+<h2 id="using-an-ffi-wrapper-to-call-mhseval-from-haskell">Using an FFI Wrapper to call <code>mhseval</code> from Haskell</h2>
+<p>My intial idea was to use the benchmark suite presented in <a href="#appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">my earlier posts</a> to find out how MicroHs compares to my toy implementations.</p>
+<p>As a first attempt I encapsulated the generation of MicroHs code and calling <code>mhseval</code> like follows:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ot">microHsevalTest ::</span> <span class="dt">CL</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">String</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>microHsevalTest expr <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> prg <span class="ot">=</span> toMhsPrg expr</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  readProcess <span class="st">&quot;mhseval&quot;</span> [] prg</span></code></pre></div>
+<p>This worked, but due to the overhead caused by executing <code>mhseval</code> as an external process I did not see any performance gains.</p>
+<p>So I came up with a new plan: let’s write an FFI wrapper around <code>mhseval</code> to avoid spawning external processes.</p>
+<p>I won’t go into the details of this wrapper. The good news is that the respective PR was accepted and is now part of the official MicroHs codebase.
+If you are interested you can study the code of the <code>C</code>-wrapper here: <a href="https://github.com/augustss/MicroHs/blob/master/src/runtime/mhseval.h">mhseval.h</a> and <a href="https://github.com/augustss/MicroHs/blob/master/src/runtime/mhseval.c">mhseval.c</a>.
+The Haskell wrapper is in <a href="https://github.com/augustss/MicroHs/blob/master/ghc/MhsEval.hs">MhsEval.hs</a>.</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MicroHsExp</span> (toMhsPrg)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">MhsEval</span> (withMhsContext, eval, run)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> source <span class="ot">=</span> factorial</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> env <span class="ot">=</span> parseEnvironment source</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> expr <span class="ot">=</span> compileEta env</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Factorial compiled to combinator expression:\n&quot;</span> <span class="op">++</span> <span class="fu">show</span> expr</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> prg <span class="ot">=</span> toMhsPrg expr</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;The resulting MicroHs program: \n&quot;</span> <span class="op">++</span> prg</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>  result <span class="ot">&lt;-</span> withMhsContext <span class="op">$</span> \ctx <span class="ot">-&gt;</span></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>    eval ctx prg</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> <span class="st">&quot;Result: &quot;</span> <span class="op">++</span> result</span></code></pre></div>
+<p>The resulting output does not bring any surprises:</p>
+<pre><code>ghci&gt; main
+Factorial compiled to combinator expression: 
+Y(R 1(B C(B(S(C EQL 0))(B(S MUL)(R(C SUB 1) B))))) 10
+The resulting MicroHs program: 
+v8.2
+0
+Y R #1 @B C @B S C == @#0 @@@B S * @@R C - @#1 @@B @@@@@@#10 @ }
+Result: #3628800</code></pre>
+<p>The function <code>withMhsContext :: (MhsContext -&gt; IO a) -&gt; IO a</code> executes an action (like <code>eval</code> or <code>run</code>) with a MicroHs context. It initializes a context, runs the action, and cleans up afterwards. It is useful for one-off evaluations without needing to manage the context manually.</p>
+<p>The function <code>eval :: MhsContext -&gt; MhsCombCode -&gt; IO String</code> takes a string containing MicroHs combinator code, evaluates it, and returns the result as a string. If evaluation fails, it throws an <code>MhsEvalError</code>. The type <code>MhsCombCode</code> is just an alias for <code>String</code>. This currently works properly only for results of type <code>Int</code>.</p>
+<p>The function <code>run :: MhsContext -&gt; MhsCombCode -&gt; IO ()</code> takes a string containing MicroHs combinator code, and runs it without returning any result.</p>
+<p>In a scenario like a performance benchmark it is not a good idea to create a new context in the tight benchmark loop. For such use cases I have also provided functions for explicitely managing the context: <code>createMhsContext :: IO MhsContext</code> and <code>closeMhsContext :: MhsContext -&gt; IO ()</code>.</p>
+<h2 id="benchmarking-mhseval-against-my-toy-runtime.">Benchmarking MhsEval against my toy runtime.</h2>
+<p>In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">last blog post on this matter</a> I focussed on comparing different bracket abstraction algorithms. This time I will have a closer look to execution speed of graph-reduction based approaches versus GHC compiled code.</p>
+<table>
+<thead>
+<tr>
+<th>testcase</th>
+<th>HHI-Reducer</th>
+<th>MicroHs</th>
+<th>Haskell native</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fib 37</td>
+<td>8.641 s</td>
+<td>6.296 s</td>
+<td>727.3 ms</td>
+</tr>
+<tr>
+<td>ackermann 3 9</td>
+<td>4.170 s</td>
+<td>1.575 s</td>
+<td>105.6 ms</td>
+</tr>
+<tr>
+<td>tak 18 6 3</td>
+<td>1.225 ms</td>
+<td>1.101 ms</td>
+<td>42.01 μs</td>
+</tr>
+</tbody>
+</table>
+<p>&lt;–
+benchmarking ackermann HHI-Reduce
+time 4.170 s (4.148 s .. 4.180 s)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 4.166 s (4.158 s .. 4.169 s)
+std dev 5.893 ms (1.075 ms .. 8.071 ms)
+variance introduced by outliers: 19% (moderately inflated)</p>
+<p>benchmarking ackermann MicroHs
+time 1.575 s (1.525 s .. 1.605 s)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 1.595 s (1.581 s .. 1.621 s)
+std dev 25.03 ms (1.942 ms .. 30.98 ms)
+variance introduced by outliers: 19% (moderately inflated)</p>
+<p>benchmarking ackermann Native
+time 105.6 ms (105.4 ms .. 105.8 ms)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 105.6 ms (105.5 ms .. 105.7 ms)
+std dev 196.7 μs (106.3 μs .. 343.3 μs)</p>
+<p>benchmarking fibonacci HHI-Eta
+time 8.641 s (8.556 s .. 8.800 s)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 8.597 s (8.580 s .. 8.622 s)
+std dev 25.16 ms (2.640 ms .. 31.99 ms)
+variance introduced by outliers: 19% (moderately inflated)</p>
+<p>benchmarking fibonacci MicroHs
+time 6.296 s (6.286 s .. 6.310 s)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 6.302 s (6.300 s .. 6.305 s)
+std dev 3.384 ms (1.956 ms .. 4.782 ms)
+variance introduced by outliers: 19% (moderately inflated)</p>
+<p>benchmarking fibonacci Native
+time 727.3 ms (722.4 ms .. 732.1 ms)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 729.4 ms (728.2 ms .. 730.7 ms)
+std dev 1.555 ms (581.8 μs .. 2.052 ms)
+variance introduced by outliers: 19% (moderately inflated)</p>
+<p>benchmarking tak HHI-Eta
+time 1.225 ms (1.220 ms .. 1.230 ms)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 1.221 ms (1.219 ms .. 1.224 ms)
+std dev 8.311 μs (6.513 μs .. 10.89 μs)</p>
+<p>benchmarking tak MicroHs
+time 1.101 ms (1.080 ms .. 1.125 ms)
+0.997 R² (0.996 R² .. 0.999 R²)
+mean 1.077 ms (1.067 ms .. 1.092 ms)
+std dev 43.67 μs (36.26 μs .. 49.96 μs)
+variance introduced by outliers: 29% (moderately inflated)</p>
+<p>benchmarking tak Native
+time 42.01 μs (41.90 μs .. 42.11 μs)
+1.000 R² (1.000 R² .. 1.000 R²)
+mean 42.00 μs (41.87 μs .. 42.12 μs)
+std dev 417.9 ns (339.7 ns .. 505.4 ns)
+–&gt;</p>
+<h2 id="using-the-ffi-wrapper-to-compile-and-execute-haskell-programs">Using the FFI wrapper to compile and execute Haskell programs</h2>
+<p>In this blog post, I have so far only used the parts of MiscroHs that deal either directly with the generation of Combinator code or with the execution of Combinator code.</p>
+<p>But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way:</p>
+<p>Let’s assume we have a file <code>Example.hs</code> with the following code:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">Example</span> <span class="kw">where</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="ot">fac ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>fac <span class="dv">0</span> <span class="ot">=</span> <span class="dv">1</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>fac n <span class="ot">=</span> n <span class="op">*</span> fac(n <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="st">&quot;computing some factorials&quot;</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> <span class="fu">map</span> fac [<span class="dv">0</span><span class="op">..</span><span class="dv">10</span>]</span></code></pre></div>
+<p>Now let’s use MicroHs to compile and execute this code from some arbitrary GHC compiled Haskell program:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">MhsEval</span> (withMhsContext, eval, run)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">MicroHs.Main</span> <span class="kw">as</span> <span class="dt">MHS</span> (main)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">System.Process</span> (withArgs)</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use microHs to compile 'Example.hs' to 'out.comb'</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>  withArgs [<span class="st">&quot;Example.hs&quot;</span>] MHS.main</span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- read the program 'out.comb' into a string</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>  prg' <span class="ot">&lt;-</span> <span class="fu">readFile</span> <span class="st">&quot;out.comb&quot;</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use the MicroHs runtime to execute the program</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>  withMhsContext <span class="op">$</span> \ctx <span class="ot">-&gt;</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>    run ctx prg'</span></code></pre></div>
+<p>The output of this program in GHCI looks like follows:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ghci</span><span class="op">&gt;</span> main</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">computing</span> some factorials</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="ex">[1,1,2,6,24,120,720,5040,40320,362880,3628800]</span></span></code></pre></div>
+<p>Ok, this works as expected but it feels a bit clumsy to send the compiler output to a file and then read in that file to be able to execute it.
+In order to improve this sketchy solution I integrated the MhsEval wrapper more tightly into the mhs compiler by implementing the <code>mhs -r</code> option also for GHC based compiles. With this goody the compile and execute cycle can be unified in a single command, as shown in the following snippet:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">MicroHs.Main</span> <span class="kw">as</span> <span class="dt">MHS</span> (main)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span>           <span class="dt">System.Process</span> (withArgs)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>  <span class="co">-- use MicroHs to compile AND execute the 'Example.hs' program</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>  withArgs [<span class="st">&quot;-r&quot;</span>, <span class="st">&quot;Example.hs&quot;</span>] MHS.main</span></code></pre></div>
+<h2 id="conclusion">Conclusion</h2>
+<p>In this post, I’ve demonstrated how to successfully integrate MicroHs as a backend for my toy combinator compiler, showcasing the elegance and power of combinatory logic as a compilation target. By adapting my compiler to emit MicroHs-compatible code, I was able to leverage the robust MicroHs graph-reduction runtime as an execution backend.</p>
+<p>The performance benchmarks reveal that MicroHs consistently outperforms my toy runtime implementations, with speedups ranging from 10% (for tak) to 2.6x (for Ackermann).
+There is still a huge gap to GHC compiled code.</p>
+<p>The work also highlights the remarkable achievement of the MicroHs project itself: a complete, bootstrappable Haskell compiler that fits in a compact, hackable codebase while demonstrating sophisticated compilation techniques.
+The presented FFI wrapper makes it possible to embed the complete MicroHs compiler and runtime within any GHC-compiled Haskell program. This opens up interesting possibilities for embedded haskell scripting and runtime code generation.</p>
+<p>For anyone interested in compiler implementation, functional programming foundations, or combinatory logic, MicroHs provides an excellent playground for experimentation. The ability to embed it within larger Haskell applications makes it particularly valuable for research and teaching purposes.</p>
+<h2 id="appendix-my-earlier-posts-on-combinatory-logic-and-graph-reduction">Appendix: my earlier posts on combinatory logic and graph-reduction</h2>
+<ul>
+<li><p>In <a href="https://thma.github.io/posts/2021-04-04-Lambda-Calculus-Combinatory-Logic-and-Cartesian-Closed-Categories.html">λ-Calculus, Combinatory Logic and Cartesian Closed Categories</a> I explained the basic concepts of compiling λ-Calculus based languages to combinatory logic expressions.
+This post also explores the deep correspondence between simply‑typed λ‑calculus, combinatory logic, and cartesian closed categories (CCC).</p></li>
+<li><p>In <a href="https://thma.github.io/posts/2021-12-27-Implementing-a-functional-language-with-Graph-Reduction.html">Implementing a Functional Language with Graph Reduction</a> I’m describing a minimal functional language implemented in Haskell using three core components: (1) a parser for untyped λ‑calculus, (2) a compiler translating λ‑terms into a fixed combinator set (S,K,I,B,C,Y) via bracket abstraction with basic optimizations, and (3) a graph‑reduction engine using in‑place mutable STRef nodes to implement combinator rewrite rules efficiently</p></li>
+<li><p><a href="https://thma.github.io/posts/2022-02-05-Evaluating-SKI-combinators-as-native-Haskell-functions.html">Evaluating SKI Combinators as Native Haskell Functions</a> This follow‑up provides an alternative to the graph reduction backend with direct evaluation of combinators as first‑class Haskell functions. The result is a significantly simpler and more compact implementation that achieves performance improvements by factors of 10 to 100 over the previous graph‑reduction approach</p></li>
+<li><p><a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">Optimizing Bracket Abstraction for Combinator Reduction</a>
+Building on the last two posts, this article focuses on improving the bracket‑abstraction phase.
+I’m implementing several different optimizations of bracket abstraction introduced by Kiselyov. In particular I perform benchmarks to study their impact on execution speed.</p></li>
+</ul>
+
+</main>
+
+<footer>
+    Site proudly generated by
+    <a href="http://jaspervdj.be/hakyll">Hakyll</a> | 
+    Source code is available at 
+    <a href="https://github.com/thma/thma.github.io">GitHub</a>
+</footer>
+
+</body>
+</html>
