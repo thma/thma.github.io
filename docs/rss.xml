@@ -219,13 +219,15 @@ Result: #3628800</code></pre>
 <p>In a scenario like a performance benchmark it is not a good idea to create a new context in the tight benchmark loop. For such use cases I have also provided functions for explicitely managing the context: <code>createMhsContext :: IO MhsContext</code> and <code>closeMhsContext :: MhsContext -&gt; IO ()</code>.</p>
 <h2 id="benchmarking-mhseval-against-my-toy-runtime.">Benchmarking MhsEval against my toy runtime.</h2>
 <p>In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html">last blog post on this matter</a> I focussed on comparing different bracket abstraction algorithms. This time I will have a closer look to execution speed of graph-reduction based approaches versus GHC compiled code.</p>
-<p>I will consider three execution runtimes:</p>
+<p>I will consider three execution runtimes in four scenarios:</p>
 <ul>
-<li>The HHI-Reducer. This is the fastest of my graph-reduction implementations.</li>
-<li>The MicroHs Runtime mhseval</li>
-<li>The GHC Runtime</li>
+<li>The HHI-Reducer. This is the fastest of my graph-reduction implementations. Compilation with <code>compileEta</code>.</li>
+<li>The MicroHs Runtime mhseval. Compilation with <code>compileEta</code>.</li>
+<li>The GHC Runtime. With HGC compiled Haskell code</li>
+<li>The MicroHs Runtime mhseval. With MicroHs compiled Haskell code.</li>
 </ul>
 <p>As I am focussing on backend performance I will not vary the compilation algorithm. I will use the <code>compileEta</code> algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)</p>
+<p>I added the fourth option (execution time for mhs compiled code on the mhs runtime) upon a request in the <a href="https://www.reddit.com/r/haskell/comments/1n5kawz/new_blog_post_embedding_microhs/">reddit discussion on this blog post</a>. Having this benchmark will show whether the MHS compiler produces combinator object code that is better optimized than the output of my <code>compileEta</code> algorithm. This is also useful as a sanity check for my toy compiler.</p>
 <p>I will benchmark execution of the following programs of my toy language:</p>
 <h3 id="fibonacci">fibonacci</h3>
 <div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>fibonacci <span class="ot">=</span> [r| </span>
@@ -248,7 +250,8 @@ Result: #3628800</code></pre>
 <span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>|]</span></code></pre></div>
 <p>compiled to:</p>
 <div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">R</span> <span class="dt">I</span>))(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">B</span>)(<span class="dt">C</span> <span class="dt">GEQ</span>))))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>)(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>)(<span class="dt">B</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">S</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">B</span>(<span class="dt">B</span> <span class="dt">B</span> <span class="dt">B</span>))(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))))(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">C</span>)(<span class="dt">R</span>(<span class="dt">R</span> <span class="dv">1</span> <span class="dt">SUB</span>) <span class="dt">B</span>)))))))(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">C</span>)(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>))))))) <span class="dv">18</span> <span class="dv">6</span> <span class="dv">3</span></span></code></pre></div>
-<p>In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC:</p>
+<p>In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC.
+These implementeations will also be used to benchmark the performance of Haskell programs compiled with MicroHs:</p>
 <div class="sourceCode" id="cb26"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>fib  <span class="ot">=</span> fix (\f n <span class="ot">-&gt;</span> </span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">if</span> n <span class="op">&lt;=</span> <span class="dv">1</span> </span>
 <span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">then</span> <span class="dv">1</span> </span>
@@ -273,6 +276,7 @@ Result: #3628800</code></pre>
 <th>HHI-Reducer</th>
 <th>MicroHs</th>
 <th>Haskell native</th>
+<th>MHS native</th>
 </tr>
 </thead>
 <tbody>
@@ -281,18 +285,21 @@ Result: #3628800</code></pre>
 <td>8.641 s</td>
 <td>6.296 s</td>
 <td>727.3 ms</td>
+<td>6.135 s</td>
 </tr>
 <tr>
 <td>ackermann 3 9</td>
 <td>4.170 s</td>
 <td>1.575 s</td>
 <td>105.6 ms</td>
+<td>1.239 s</td>
 </tr>
 <tr>
 <td>tak 18 6 3</td>
 <td>1.225 ms</td>
 <td>1.101 ms</td>
 <td>42.01 μs</td>
+<td>858.8 μs</td>
 </tr>
 </tbody>
 </table>
@@ -320,6 +327,12 @@ Result: #3628800</code></pre>
 <td>14.9</td>
 <td>26.2</td>
 </tr>
+<tr>
+<td>MicroHs native vs MicroHs Execute</td>
+<td>1.03</td>
+<td>1.27</td>
+<td>1.28</td>
+</tr>
 </tbody>
 </table>
 <p>Before doing this benchmarking exercise I had two expectations:</p>
@@ -335,6 +348,8 @@ In my <a href="https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstra
 <div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Y</span>(<span class="dt">R</span> <span class="dv">1</span>(<span class="dt">B</span> <span class="dt">C</span>(<span class="dt">B</span>(<span class="dt">S</span>(<span class="dt">C</span> <span class="dt">LEQ</span> <span class="dv">1</span>))(<span class="dt">S</span>(<span class="dt">B</span> <span class="dt">S</span>(<span class="dt">B</span>(<span class="dt">B</span> <span class="dt">ADD</span>)(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">1</span>) <span class="dt">B</span>)))(<span class="dt">R</span>(<span class="dt">C</span> <span class="dt">SUB</span> <span class="dv">2</span>) <span class="dt">B</span>))))) <span class="dv">37</span></span></code></pre></div>
 <p>Even so, the GHC version runs about 8.7× faster.
 For programs like this, increasing mhseval’s reductions per second would be a beneficial undertaking!</p>
+<p>The third row in this table compares the mhseval execution time for the haskell equivalents compiled with MHS versus my toy language programs compiled with <code>compileEta</code>.</p>
+<p>This comparison shows that the MicroHs compiled programs run up to 28% faster. This indicates that the MicroHs compiler produces combinator object code that is better optimized than the <code>compileEta</code> algorithm. This is not surprising as <code>compileEta</code>is not the best abstraction algorithms according to my previous research. I am using it here because it produces the code that is compatible with the mhseval runtime.</p>
 <h2 id="using-the-ffi-wrapper-to-compile-and-execute-haskell-programs">Using the FFI wrapper to compile and execute Haskell programs</h2>
 <p>In this blog post, I have so far only used the parts of MiscroHs that deal either directly with the generation of Combinator code or with the execution of Combinator code.</p>
 <p>But my two pull requests allow to embed MicroHs in GHC compiled Haskell programs in a much more complete way:</p>

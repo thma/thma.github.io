@@ -325,13 +325,16 @@ In a scenario like a performance benchmark it is not a good idea to create a new
 
 In my [last blog post on this matter](https://thma.github.io/posts/2023-10-08-Optimizing-bracket-abstraction-for-combinator-reduction.html) I focussed on comparing different bracket abstraction algorithms. This time I will have a closer look to execution speed of graph-reduction based approaches versus GHC compiled code.
 
-I will consider three execution runtimes: 
+I will consider three execution runtimes in four scenarios: 
 
-- The HHI-Reducer. This is the fastest of my graph-reduction implementations. 
-- The MicroHs Runtime mhseval 
-- The GHC Runtime
+- The HHI-Reducer. This is the fastest of my graph-reduction implementations. Compilation with `compileEta`.
+- The MicroHs Runtime mhseval. Compilation with `compileEta`.
+- The GHC Runtime. With HGC compiled Haskell code
+- The MicroHs Runtime mhseval. With MicroHs compiled Haskell code.
 
 As I am focussing on backend performance I will not vary the compilation algorithm. I will use the `compileEta` algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)
+
+I added the fourth option (execution time for mhs compiled code on the mhs runtime) upon a request in the [reddit discussion on this blog post](https://www.reddit.com/r/haskell/comments/1n5kawz/new_blog_post_embedding_microhs/). Having this benchmark will show whether the MHS compiler produces combinator object code that is better optimized than the output of my `compileEta` algorithm. This is also useful as a sanity check for my toy compiler.
 
 I will benchmark execution of the following programs of my toy language:
 
@@ -380,7 +383,8 @@ compiled to:
 Y(B(B(R I))(B(B(B S))(B(S(B S(B(B B)(C GEQ))))(S(B S(B(B S)(B(B(B S))(S(B S(B(B S)(B(B(B S))(S(B B(B B B))(R(R 1 SUB) B)))))(B C(B(B C)(R(R 1 SUB) B)))))))(B(B C)(B C(R(C SUB 1) B))))))) 18 6 3
 ````
 
-In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC:
+In order to compare these programs against GHC I’m using the following Haskell equivalents for GHC.
+These implementeations will also be used to benchmark the performance of Haskell programs compiled with MicroHs:
 
 ```haskell
 fib  = fix (\f n -> 
@@ -403,11 +407,11 @@ tak  = fix (\f x y z ->
 
 Benchmarking these programs with the [Criterion micro-benchmarking suite](https://hackage.haskell.org/package/criterion) yields the following results:
 
-|program|HHI-Reducer|MicroHs|Haskell native| 
-|----|----|----|----|
-|fib 37|8.641 s|6.296 s|727.3 ms|
-|ackermann 3 9 |4.170 s|1.575 s| 105.6 ms|
-|tak 18 6 3|1.225 ms|1.101 ms|42.01 μs|
+|program|HHI-Reducer|MicroHs|Haskell native|MHS native
+|----|----|----|----|----|
+|fib 37|8.641 s|6.296 s|727.3 ms|6.135 s|
+|ackermann 3 9 |4.170 s|1.575 s| 105.6 ms| 1.239 s|
+|tak 18 6 3|1.225 ms|1.101 ms|42.01 μs|858.8 μs|
 
 ### Interpretation of the results
 
@@ -417,6 +421,7 @@ The numbers show a clear hierarchy: MicroHs consistently outperforms the baselin
 |----|----|----|----|
 |MicroHs vs HHI-Reducer|	1.4	|2.6	|1.1 |
 |GHC native vs MicroHs|	8.7	|14.9	|26.2 |
+|MicroHs native vs MicroHs Execute|1.03| 1.27| 1.28|
 
 Before doing this benchmarking exercise I had two expectations:
 
@@ -438,6 +443,9 @@ Y(R 1(B C(B(S(C LEQ 1))(S(B S(B(B ADD)(R(C SUB 1) B)))(R(C SUB 2) B))))) 37
 Even so, the GHC version runs about 8.7× faster. 
 For programs like this, increasing mhseval’s reductions per second would be a beneficial undertaking!
 
+The third row in this table compares the mhseval execution time for the haskell equivalents compiled with MHS versus my toy language programs compiled with `compileEta`.
+
+This comparison shows that the MicroHs compiled programs run up to 28% faster. This indicates that the MicroHs compiler produces combinator object code that is better optimized than the `compileEta` algorithm. This is not surprising as `compileEta`is not the best abstraction algorithms according to my previous research. I am using it here because it produces the code that is compatible with the mhseval runtime. 
 
 ## Using the FFI wrapper to compile and execute Haskell programs 
 
