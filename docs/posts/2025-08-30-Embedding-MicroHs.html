@@ -265,7 +265,7 @@ Result: #3628800</code></pre>
 <ul>
 <li>The HHI-Reducer. This is the fastest of my graph-reduction implementations. Compilation with <code>compileEta</code>.</li>
 <li>The MicroHs Runtime mhseval. Compilation with <code>compileEta</code>.</li>
-<li>The GHC Runtime. With HGC compiled Haskell code</li>
+<li>The GHC Runtime. With GHC compiled Haskell code</li>
 <li>The MicroHs Runtime mhseval. With MicroHs compiled Haskell code.</li>
 </ul>
 <p>As I am focussing on backend performance I will not vary the compilation algorithm. I will use the <code>compileEta</code> algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)</p>

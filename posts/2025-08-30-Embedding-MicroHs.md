@@ -329,7 +329,7 @@ I will consider three execution runtimes in four scenarios:
 
 - The HHI-Reducer. This is the fastest of my graph-reduction implementations. Compilation with `compileEta`.
 - The MicroHs Runtime mhseval. Compilation with `compileEta`.
-- The GHC Runtime. With HGC compiled Haskell code
+- The GHC Runtime. With GHC compiled Haskell code
 - The MicroHs Runtime mhseval. With MicroHs compiled Haskell code.
 
 As I am focussing on backend performance I will not vary the compilation algorithm. I will use the `compileEta` algorithm (introduced in the above mentioned post) which will produce the most compact combinator code for standard combinators. (As of now MicroHs does not support Bulk-Combinators which would allow even more compact code.)
